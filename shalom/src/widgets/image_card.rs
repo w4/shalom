@@ -19,10 +19,7 @@ use iced::{
     Point, Rectangle, Renderer, Size, Theme, Vector,
 };
 
-pub fn image_card<'a, M: 'a>(
-    handle: impl Into<image::Handle>,
-    caption: &'a str,
-) -> ImageCard<'a, M> {
+pub fn image_card<'a, M: 'a>(handle: impl Into<image::Handle>, caption: &str) -> ImageCard<'a, M> {
     let image_handle = handle.into();
 
     ImageCard {

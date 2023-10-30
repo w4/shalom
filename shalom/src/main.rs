@@ -18,6 +18,7 @@ use iced::{
 
 use crate::{
     config::Config,
+    oracle::Oracle,
     theme::{Icon, Image},
     widgets::{context_menu::ContextMenu, mouse_area::mouse_area},
 };
@@ -26,6 +27,7 @@ pub struct Shalom {
     page: ActivePage,
     context_menu: Option<ActiveContextMenu>,
     homepage: ActivePage,
+    oracle: Option<Arc<Oracle>>,
 }
 
 impl Application for Shalom {
@@ -39,6 +41,7 @@ impl Application for Shalom {
             page: ActivePage::Loading,
             context_menu: None,
             homepage: ActivePage::Room("Living Room"),
+            oracle: None,
         };
 
         // this is only best-effort to try and prevent blocking when loading
@@ -49,10 +52,11 @@ impl Application for Shalom {
             async {
                 let config = load_config().await;
                 let client = hass_client::create(config.home_assistant).await;
+                let oracle = Oracle::new(client.clone()).await;
 
-                Arc::new(client)
+                Arc::new(oracle)
             },
-            |_client| Message::Loaded,
+            Message::Loaded,
         );
 
         (this, command)
@@ -64,8 +68,9 @@ impl Application for Shalom {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::Loaded => {
+            Message::Loaded(oracle) => {
                 self.page = self.homepage.clone();
+                self.oracle = Some(oracle);
             }
             Message::CloseContextMenu => {
                 self.context_menu = None;
@@ -87,7 +92,10 @@ impl Application for Shalom {
             ActivePage::Room(room) => {
                 Element::from(pages::room::Room::new(room, Message::OpenContextMenu))
             }
-            ActivePage::Omni => Element::from(pages::omni::Omni::new(Message::ChangePage)),
+            ActivePage::Omni => Element::from(pages::omni::Omni::new(
+                self.oracle.clone().unwrap(),
+                Message::ChangePage,
+            )),
         };
 
         let mut content = Column::new().push(scrollable(page_content));
@@ -152,7 +160,7 @@ impl Application for Shalom {
                         stretch: Stretch::Condensed,
                         ..Font::with_name("Helvetica Neue")
                     }),
-                    row![vertical_slider(0..=100, 0, |_v| Message::Loaded).height(200)]
+                    row![vertical_slider(0..=100, 0, |_v| Message::CloseContextMenu).height(200)]
                         .align_items(Alignment::Center)
                 ])
                 .width(Length::Fill)
@@ -175,7 +183,7 @@ async fn load_config() -> Config {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded,
+    Loaded(Arc<Oracle>),
     CloseContextMenu,
     ChangePage(ActivePage),
     OpenContextMenu(ActiveContextMenu),

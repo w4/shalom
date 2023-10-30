@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
@@ -6,15 +8,16 @@ use iced::{
 };
 use itertools::Itertools;
 
-use crate::{theme::Image, widgets::image_card, ActivePage};
+use crate::{oracle::Oracle, theme::Image, widgets::image_card, ActivePage};
 
 pub struct Omni<M> {
+    oracle: Arc<Oracle>,
     open_page: fn(ActivePage) -> M,
 }
 
 impl<M> Omni<M> {
-    pub fn new(open_page: fn(ActivePage) -> M) -> Self {
-        Self { open_page }
+    pub fn new(oracle: Arc<Oracle>, open_page: fn(ActivePage) -> M) -> Self {
+        Self { oracle, open_page }
     }
 }
 
@@ -43,18 +46,14 @@ impl<M: Clone> Component<M, Renderer> for Omni<M> {
             // .width(Length::FillPortion(1))
         };
 
-        let rooms = [
-            room("Living Room", Image::LivingRoom),
-            room("Kitchen", Image::Kitchen),
-            room("Bathroom", Image::Bathroom),
-            room("Bedroom", Image::Bedroom),
-            room("Dining Room", Image::DiningRoom),
-        ]
-        .into_iter()
-        .chunks(2)
-        .into_iter()
-        .map(|children| children.into_iter().fold(Row::new().spacing(10), Row::push))
-        .fold(Column::new().spacing(10), Column::push);
+        let rooms = self
+            .oracle
+            .rooms()
+            .map(|r| room(r.name.as_ref(), determine_image(&r.name)))
+            .chunks(2)
+            .into_iter()
+            .map(|children| children.into_iter().fold(Row::new().spacing(10), Row::push))
+            .fold(Column::new().spacing(10), Column::push);
 
         scrollable(
             column![header("Cameras"), header("Rooms"), rooms,]
@@ -62,6 +61,16 @@ impl<M: Clone> Component<M, Renderer> for Omni<M> {
                 .padding(40),
         )
         .into()
+    }
+}
+
+fn determine_image(name: &str) -> Image {
+    match name {
+        "Kitchen" => Image::Kitchen,
+        "Bathroom" => Image::Bathroom,
+        "Bedroom" => Image::Bedroom,
+        "Dining Room" => Image::DiningRoom,
+        _ => Image::LivingRoom,
     }
 }
 
