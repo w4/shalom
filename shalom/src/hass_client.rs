@@ -175,10 +175,21 @@ impl HassRequest {
 }
 
 pub mod responses {
-    use std::borrow::Cow;
+    use std::{
+        borrow::Cow,
+        fmt::{Display, Formatter},
+    };
 
-    use serde::Deserialize;
+    use serde::{
+        de,
+        de::{MapAccess, Visitor},
+        Deserialize, Deserializer,
+    };
+    use serde_json::value::RawValue;
+    use strum::EnumString;
     use yoke::Yokeable;
+
+    use crate::theme::Icon;
 
     #[derive(Deserialize, Yokeable, Debug)]
     pub struct AreaRegistryList<'a>(#[serde(borrow)] pub Vec<Area<'a>>);
@@ -268,40 +279,102 @@ pub mod responses {
         pub unique_id: Option<Cow<'a, str>>,
     }
 
-    #[derive(Deserialize, Yokeable, Debug)]
-    pub struct StatesList<'a>(#[serde(borrow)] pub Vec<State<'a>>);
+    #[derive(Yokeable, Debug, Deserialize)]
+    pub struct StatesList<'a>(#[serde(borrow, bound(deserialize = "'a: 'de"))] pub Vec<State<'a>>);
+
+    #[derive(Debug)]
+    pub struct State<'a> {
+        pub entity_id: Cow<'a, str>,
+        pub state: Cow<'a, str>,
+        pub attributes: StateAttributes<'a>,
+    }
+
+    impl<'de> Deserialize<'de> for State<'de> {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_struct(
+                "State",
+                &["entity_id", "state", "attributes"],
+                StateVisitor {},
+            )
+        }
+    }
+
+    pub struct StateVisitor {}
+
+    impl<'de> Visitor<'de> for StateVisitor {
+        type Value = State<'de>;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            formatter.write_str("states struct")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut entity_id: Option<Cow<'de, str>> = None;
+            let mut state: Option<Cow<'de, str>> = None;
+            let mut attributes: Option<&'de RawValue> = None;
+
+            while let Some(key) = map.next_key()? {
+                match key {
+                    "entity_id" => {
+                        entity_id = Some(map.next_value()?);
+                    }
+                    "state" => {
+                        state = Some(map.next_value()?);
+                    }
+                    "attributes" => {
+                        attributes = Some(map.next_value()?);
+                    }
+                    _ => {
+                        let _: &'de RawValue = map.next_value()?;
+                    }
+                }
+            }
+
+            let entity_id = entity_id.ok_or_else(|| de::Error::missing_field("entity_id"))?;
+            let state = state.ok_or_else(|| de::Error::missing_field("state"))?;
+            let attributes = attributes.ok_or_else(|| de::Error::missing_field("attributes"))?;
+
+            let Some((kind, _)) = entity_id.split_once('.') else {
+                return Err(de::Error::custom("invalid entity_id"));
+            };
+
+            let attributes = match kind {
+                "sun" => StateAttributes::Light(serde_json::from_str(attributes.get()).unwrap()),
+                "media_player" => {
+                    StateAttributes::MediaPlayer(serde_json::from_str(attributes.get()).unwrap())
+                }
+                "camera" => {
+                    StateAttributes::Camera(serde_json::from_str(attributes.get()).unwrap())
+                }
+                "weather" => {
+                    StateAttributes::Weather(serde_json::from_str(attributes.get()).unwrap())
+                }
+                "light" => StateAttributes::Light(serde_json::from_str(attributes.get()).unwrap()),
+                _ => StateAttributes::Unknown,
+            };
+
+            Ok(State {
+                entity_id,
+                state,
+                attributes,
+            })
+        }
+    }
 
     #[derive(Deserialize, Debug)]
-    pub enum State<'a> {
-        Sun {
-            #[serde(borrow)]
-            state: Cow<'a, str>,
-            attributes: StateSunAttributes,
-        },
-        MediaPlayer {
-            #[serde(borrow)]
-            state: Cow<'a, str>,
-            #[serde(borrow)]
-            attributes: StateMediaPlayerAttributes<'a>,
-        },
-        Camera {
-            #[serde(borrow)]
-            state: Cow<'a, str>,
-            #[serde(borrow)]
-            attributes: StateCameraAttributes<'a>,
-        },
-        Weather {
-            #[serde(borrow)]
-            state: Cow<'a, str>,
-            #[serde(borrow)]
-            attributes: StateWeatherAttributes<'a>,
-        },
-        Light {
-            #[serde(borrow)]
-            state: Cow<'a, str>,
-            #[serde(borrow)]
-            attributes: StateLightAttributes<'a>,
-        }
+    pub enum StateAttributes<'a> {
+        Sun(StateSunAttributes),
+        MediaPlayer(#[serde(borrow)] StateMediaPlayerAttributes<'a>),
+        Camera(#[serde(borrow)] StateCameraAttributes<'a>),
+        Weather(#[serde(borrow)] StateWeatherAttributes<'a>),
+        Light(#[serde(borrow)] StateLightAttributes<'a>),
+        Unknown,
     }
 
     #[derive(Deserialize, Debug)]
@@ -319,27 +392,27 @@ pub mod responses {
 
     #[derive(Deserialize, Debug)]
     pub struct StateMediaPlayerAttributes<'a> {
-        #[serde(borrow)]
+        #[serde(borrow, default)]
         source_list: Vec<Cow<'a, str>>,
-        #[serde(borrow)]
+        #[serde(borrow, default)]
         group_members: Vec<Cow<'a, str>>,
-        volume_level: f32,
-        is_volume_muted: bool,
+        volume_level: Option<f32>,
+        is_volume_muted: Option<bool>,
         #[serde(borrow)]
-        media_content_id: Cow<'a, str>,
+        media_content_id: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        media_content_type: Cow<'a, str>,
+        media_content_type: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        source: Cow<'a, str>,
-        shuffle: bool,
+        source: Option<Cow<'a, str>>,
+        shuffle: Option<bool>,
         #[serde(borrow)]
-        repeat: Cow<'a, str>,
-        queue_position: u32,
-        queue_size: u32,
+        repeat: Option<Cow<'a, str>>,
+        queue_position: Option<u32>,
+        queue_size: Option<u32>,
         #[serde(borrow)]
-        device_class: Cow<'a, str>,
+        device_class: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        friendly_name: Cow<'a, str>,
+        friendly_name: Option<Cow<'a, str>>,
     }
 
     #[derive(Deserialize, Debug)]
@@ -349,72 +422,142 @@ pub mod responses {
         #[serde(borrow)]
         friendly_name: Cow<'a, str>,
         #[serde(borrow)]
-        stream_source: Cow<'a, str>,
+        stream_source: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        still_image_url: Cow<'a, str>,
+        still_image_url: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        name: Cow<'a, str>,
+        name: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        id: Cow<'a, str>,
+        id: Option<Cow<'a, str>>,
         #[serde(borrow)]
         entity_picture: Cow<'a, str>,
     }
 
+    #[derive(Deserialize, Debug, EnumString, Copy, Clone)]
+    #[serde(rename_all = "kebab-case")]
+    #[strum(serialize_all = "kebab-case")]
+    pub enum WeatherCondition {
+        ClearNight,
+        Cloudy,
+        Fog,
+        Hail,
+        Lightning,
+        LightningRainy,
+        #[serde(rename = "partlycloudy")]
+        #[strum(serialize = "partlycloudy")]
+        PartlyCloudy,
+        Pouring,
+        Rainy,
+        Snowy,
+        SnowyRainy,
+        Sunny,
+        Windy,
+        WindyVariant,
+        Exceptional,
+        #[serde(other)]
+        Unknown,
+    }
+
+    impl WeatherCondition {
+        pub fn icon(self, day_time: bool) -> Option<Icon> {
+            match self {
+                WeatherCondition::ClearNight => Some(Icon::ClearNight),
+                WeatherCondition::Cloudy => Some(Icon::Cloud),
+                WeatherCondition::Fog => Some(Icon::Fog),
+                WeatherCondition::Hail => Some(Icon::Hail),
+                WeatherCondition::Lightning => Some(Icon::Thunderstorms),
+                WeatherCondition::LightningRainy => Some(Icon::ThunderstormsRain),
+                WeatherCondition::PartlyCloudy => Some(if day_time {
+                    Icon::PartlyCloudyDay
+                } else {
+                    Icon::PartlyCloudyNight
+                }),
+                WeatherCondition::Pouring => Some(Icon::ExtremeRain),
+                WeatherCondition::Rainy => Some(Icon::Rain),
+                WeatherCondition::Snowy | WeatherCondition::SnowyRainy => Some(Icon::Snow),
+                WeatherCondition::Sunny => Some(Icon::ClearDay),
+                WeatherCondition::Windy | WeatherCondition::WindyVariant => Some(Icon::Wind),
+                WeatherCondition::Exceptional | WeatherCondition::Unknown => None,
+            }
+        }
+    }
+
+    impl Display for WeatherCondition {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            f.write_str(match self {
+                WeatherCondition::ClearNight => "Clear",
+                WeatherCondition::Cloudy => "Cloudy",
+                WeatherCondition::Fog => "Fog",
+                WeatherCondition::Hail => "Hail",
+                WeatherCondition::Lightning | WeatherCondition::LightningRainy => "Lightning",
+                WeatherCondition::PartlyCloudy => "Partly Cloudy",
+                WeatherCondition::Pouring => "Heavy Rain",
+                WeatherCondition::Rainy => "Rain",
+                WeatherCondition::Snowy | WeatherCondition::SnowyRainy => "Snow",
+                WeatherCondition::Sunny => "Sunny",
+                WeatherCondition::Windy | WeatherCondition::WindyVariant => "Windy",
+                WeatherCondition::Exceptional => "Exceptional",
+                WeatherCondition::Unknown => "Unknown",
+            })
+        }
+    }
+
     #[derive(Deserialize, Debug)]
     pub struct StateWeatherAttributes<'a> {
-        temperature: f32,
-        dew_point: f32,
+        pub temperature: f32,
+        pub dew_point: f32,
         #[serde(borrow)]
-        temperature_unit: Cow<'a, str>,
-        humidity: u8,
-        cloud_coverage: u8,
-        pressure: f32,
+        pub temperature_unit: Cow<'a, str>,
+        pub humidity: f32,
+        pub cloud_coverage: f32,
+        pub pressure: f32,
         #[serde(borrow)]
-        pressure_unit: Cow<'a, str>,
-        wind_bearing: f32,
-        wind_speed: f32,
+        pub pressure_unit: Cow<'a, str>,
+        pub wind_bearing: f32,
+        pub wind_speed: f32,
         #[serde(borrow)]
-        wind_speed_unit: Cow<'a, str>,
+        pub wind_speed_unit: Cow<'a, str>,
         #[serde(borrow)]
-        visibility_unit: Cow<'a, str>,
+        pub visibility_unit: Cow<'a, str>,
         #[serde(borrow)]
-        precipitation_unit: Cow<'a, str>,
+        pub precipitation_unit: Cow<'a, str>,
         #[serde(borrow)]
-        forecast: Vec<StateWeatherAttributesForecast<'a>>,
+        pub forecast: Vec<StateWeatherAttributesForecast<'a>>,
     }
 
     #[derive(Deserialize, Debug)]
     pub struct StateWeatherAttributesForecast<'a> {
         #[serde(borrow)]
-        condition: Cow<'a, str>,
+        pub condition: Cow<'a, str>,
         // datetime: time::OffsetDateTime,
-        wind_bearing: f32,
-        temperature: f32,
+        pub wind_bearing: f32,
+        pub temperature: f32,
         #[serde(rename = "templow")]
-        temperature_low: f32,
-        wind_speed: f32,
-        precipitation: u8,
-        humidity: u8,
+        pub temperature_low: f32,
+        pub wind_speed: f32,
+        pub precipitation: f32,
+        pub humidity: f32,
     }
 
     #[derive(Deserialize, Debug)]
     pub struct StateLightAttributes<'a> {
-        min_color_temp_kelvin: u16,
-        max_color_temp_kelvin: u16,
-        min_mireds: u16,
-        max_mireds: u16,
+        min_color_temp_kelvin: Option<u16>,
+        max_color_temp_kelvin: Option<u16>,
+        min_mireds: Option<u16>,
+        max_mireds: Option<u16>,
+        #[serde(default)]
         supported_color_modes: Vec<ColorMode>,
         #[serde(borrow)]
-        mode: Cow<'a, str>,
+        mode: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        dynamics: Cow<'a, str>,
+        dynamics: Option<Cow<'a, str>>,
         #[serde(borrow)]
         friendly_name: Cow<'a, str>,
         color_mode: Option<ColorMode>,
-        brightness: Option<u8>,
+        brightness: Option<f32>,
         color_temp_kelvin: Option<u16>,
         color_temp: Option<u16>,
-        xy_color: Option<(u8, u8)>,
+        xy_color: Option<(f32, f32)>,
     }
 
     #[derive(Deserialize, Debug)]

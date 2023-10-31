@@ -14,6 +14,7 @@ itertools = "0.11"
 keyframe = "1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
+strum = { version = "0.25", features = ["derive"] }
 tokio = { version = "1.33", features = ["net", "sync", "rt", "macros", "time", "fs"] }
 tokio-tungstenite = "0.20"
 toml = "0.8"

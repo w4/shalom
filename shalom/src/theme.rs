@@ -43,30 +43,56 @@ pub enum Icon {
     Play,
     Pause,
     Repeat,
+    Cloud,
+    ClearNight,
+    Fog,
+    Hail,
+    Thunderstorms,
+    ThunderstormsRain,
+    PartlyCloudyDay,
+    PartlyCloudyNight,
+    ExtremeRain,
+    Rain,
+    Snow,
+    ClearDay,
+    Wind,
 }
 
 impl Icon {
     pub fn handle(self) -> svg::Handle {
         macro_rules! image {
             ($path:expr) => {{
-                static FILE: &[u8] = include_bytes!($path);
+                static FILE: &[u8] = include_bytes!(concat!("../../assets/icons/", $path, ".svg"));
                 static HANDLE: Lazy<svg::Handle> = Lazy::new(|| svg::Handle::from_memory(FILE));
                 (*HANDLE).clone()
             }};
         }
 
         match self {
-            Self::Home => image!("../../assets/icons/home.svg"),
-            Self::Back => image!("../../assets/icons/back.svg"),
-            Self::Bulb => image!("../../assets/icons/light-bulb.svg"),
-            Self::Hamburger => image!("../../assets/icons/hamburger.svg"),
-            Self::Speaker => image!("../../assets/icons/speaker.svg"),
-            Self::SpeakerMuted => image!("../../assets/icons/speaker-muted.svg"),
-            Self::Backward => image!("../../assets/icons/backward.svg"),
-            Self::Forward => image!("../../assets/icons/forward.svg"),
-            Self::Play => image!("../../assets/icons/play.svg"),
-            Self::Pause => image!("../../assets/icons/pause.svg"),
-            Self::Repeat => image!("../../assets/icons/repeat.svg"),
+            Self::Home => image!("home"),
+            Self::Back => image!("back"),
+            Self::Bulb => image!("light-bulb"),
+            Self::Hamburger => image!("hamburger"),
+            Self::Speaker => image!("speaker"),
+            Self::SpeakerMuted => image!("speaker-muted"),
+            Self::Backward => image!("backward"),
+            Self::Forward => image!("forward"),
+            Self::Play => image!("play"),
+            Self::Pause => image!("pause"),
+            Self::Repeat => image!("repeat"),
+            Self::Cloud => image!("cloud"),
+            Self::ClearNight => image!("clear-night"),
+            Self::Fog => image!("fog"),
+            Self::Hail => image!("hail"),
+            Self::Thunderstorms => image!("thunderstorms"),
+            Self::ThunderstormsRain => image!("thunderstorms-rain"),
+            Self::PartlyCloudyDay => image!("partly-cloudy-day"),
+            Self::PartlyCloudyNight => image!("partly-cloudy-night"),
+            Self::ExtremeRain => image!("extreme-rain"),
+            Self::Rain => image!("rain"),
+            Self::Snow => image!("snow"),
+            Self::ClearDay => image!("clear-day"),
+            Self::Wind => image!("wind"),
         }
     }
 }

@@ -32,13 +32,11 @@ impl<M: Clone> Component<M, Renderer> for Omni<M> {
     }
 
     fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let header = |v| {
-            text(v).size(60).font(Font {
-                weight: Weight::Bold,
-                stretch: Stretch::Condensed,
-                ..Font::with_name("Helvetica Neue")
-            })
-        };
+        let greeting = text("Good Evening").size(60).font(Font {
+            weight: Weight::Bold,
+            stretch: Stretch::Condensed,
+            ..Font::with_name("Helvetica Neue")
+        });
 
         let room = |room, image| {
             image_card::image_card(image, room).on_press(Event::OpenRoom(room))
@@ -56,9 +54,13 @@ impl<M: Clone> Component<M, Renderer> for Omni<M> {
             .fold(Column::new().spacing(10), Column::push);
 
         scrollable(
-            column![header("Cameras"), header("Rooms"), rooms,]
-                .spacing(20)
-                .padding(40),
+            column![
+                greeting,
+                crate::widgets::cards::weather::WeatherCard::new(self.oracle.clone()),
+                rooms,
+            ]
+            .spacing(20)
+            .padding(40),
         )
         .into()
     }

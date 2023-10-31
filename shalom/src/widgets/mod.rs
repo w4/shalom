@@ -1,3 +1,4 @@
+pub mod cards;
 pub mod context_menu;
 pub mod image_card;
 pub mod media_player;
