@@ -194,4 +194,233 @@ pub mod responses {
         #[serde(borrow)]
         pub picture: Option<Cow<'a, str>>,
     }
+
+    #[derive(Deserialize, Yokeable, Debug)]
+    pub struct DeviceRegistryList<'a>(#[serde(borrow)] pub Vec<Device<'a>>);
+
+    #[derive(Deserialize, Debug)]
+    pub struct Device<'a> {
+        #[serde(borrow)]
+        pub area_id: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub configuration_url: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub config_entries: Vec<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub connections: Vec<(Cow<'a, str>, Cow<'a, str>)>,
+        #[serde(borrow)]
+        pub disabled_by: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub entry_type: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub hw_version: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub id: Cow<'a, str>,
+        #[serde(borrow)]
+        pub identifiers: Vec<(Cow<'a, str>, Cow<'a, str>)>,
+        #[serde(borrow)]
+        pub manufacturer: Cow<'a, str>,
+        #[serde(borrow)]
+        pub model: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub name_by_user: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub name: Cow<'a, str>,
+        #[serde(borrow)]
+        pub sw_version: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub via_device_id: Option<Cow<'a, str>>,
+    }
+
+    #[derive(Deserialize, Yokeable, Debug)]
+    pub struct EntityRegistryList<'a>(#[serde(borrow)] pub Vec<Entity<'a>>);
+
+    #[derive(Deserialize, Debug)]
+    pub struct Entity<'a> {
+        #[serde(borrow)]
+        pub area_id: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub config_entry_id: Cow<'a, str>,
+        #[serde(borrow)]
+        pub device_id: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub disabled_by: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub entity_category: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub entity_id: Cow<'a, str>,
+        pub has_entity_name: bool,
+        #[serde(borrow)]
+        pub hidden_by: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub icon: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub id: Cow<'a, str>,
+        #[serde(borrow)]
+        pub name: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub original_name: Cow<'a, str>,
+        #[serde(borrow)]
+        pub platform: Cow<'a, str>,
+        #[serde(borrow)]
+        pub translation_key: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub unique_id: Option<Cow<'a, str>>,
+    }
+
+    #[derive(Deserialize, Yokeable, Debug)]
+    pub struct StatesList<'a>(#[serde(borrow)] pub Vec<State<'a>>);
+
+    #[derive(Deserialize, Debug)]
+    pub enum State<'a> {
+        Sun {
+            #[serde(borrow)]
+            state: Cow<'a, str>,
+            attributes: StateSunAttributes,
+        },
+        MediaPlayer {
+            #[serde(borrow)]
+            state: Cow<'a, str>,
+            #[serde(borrow)]
+            attributes: StateMediaPlayerAttributes<'a>,
+        },
+        Camera {
+            #[serde(borrow)]
+            state: Cow<'a, str>,
+            #[serde(borrow)]
+            attributes: StateCameraAttributes<'a>,
+        },
+        Weather {
+            #[serde(borrow)]
+            state: Cow<'a, str>,
+            #[serde(borrow)]
+            attributes: StateWeatherAttributes<'a>,
+        },
+        Light {
+            #[serde(borrow)]
+            state: Cow<'a, str>,
+            #[serde(borrow)]
+            attributes: StateLightAttributes<'a>,
+        }
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct StateSunAttributes {
+        // next_dawn: time::OffsetDateTime,
+        // next_dusk: time::OffsetDateTime,
+        // next_midnight: time::OffsetDateTime,
+        // next_noon: time::OffsetDateTime,
+        // next_rising: time::OffsetDateTime,
+        // next_setting: time::OffsetDateTime,
+        elevation: f32,
+        azimuth: f32,
+        rising: bool,
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct StateMediaPlayerAttributes<'a> {
+        #[serde(borrow)]
+        source_list: Vec<Cow<'a, str>>,
+        #[serde(borrow)]
+        group_members: Vec<Cow<'a, str>>,
+        volume_level: f32,
+        is_volume_muted: bool,
+        #[serde(borrow)]
+        media_content_id: Cow<'a, str>,
+        #[serde(borrow)]
+        media_content_type: Cow<'a, str>,
+        #[serde(borrow)]
+        source: Cow<'a, str>,
+        shuffle: bool,
+        #[serde(borrow)]
+        repeat: Cow<'a, str>,
+        queue_position: u32,
+        queue_size: u32,
+        #[serde(borrow)]
+        device_class: Cow<'a, str>,
+        #[serde(borrow)]
+        friendly_name: Cow<'a, str>,
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct StateCameraAttributes<'a> {
+        #[serde(borrow)]
+        access_token: Cow<'a, str>,
+        #[serde(borrow)]
+        friendly_name: Cow<'a, str>,
+        #[serde(borrow)]
+        stream_source: Cow<'a, str>,
+        #[serde(borrow)]
+        still_image_url: Cow<'a, str>,
+        #[serde(borrow)]
+        name: Cow<'a, str>,
+        #[serde(borrow)]
+        id: Cow<'a, str>,
+        #[serde(borrow)]
+        entity_picture: Cow<'a, str>,
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct StateWeatherAttributes<'a> {
+        temperature: f32,
+        dew_point: f32,
+        #[serde(borrow)]
+        temperature_unit: Cow<'a, str>,
+        humidity: u8,
+        cloud_coverage: u8,
+        pressure: f32,
+        #[serde(borrow)]
+        pressure_unit: Cow<'a, str>,
+        wind_bearing: f32,
+        wind_speed: f32,
+        #[serde(borrow)]
+        wind_speed_unit: Cow<'a, str>,
+        #[serde(borrow)]
+        visibility_unit: Cow<'a, str>,
+        #[serde(borrow)]
+        precipitation_unit: Cow<'a, str>,
+        #[serde(borrow)]
+        forecast: Vec<StateWeatherAttributesForecast<'a>>,
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct StateWeatherAttributesForecast<'a> {
+        #[serde(borrow)]
+        condition: Cow<'a, str>,
+        // datetime: time::OffsetDateTime,
+        wind_bearing: f32,
+        temperature: f32,
+        #[serde(rename = "templow")]
+        temperature_low: f32,
+        wind_speed: f32,
+        precipitation: u8,
+        humidity: u8,
+    }
+
+    #[derive(Deserialize, Debug)]
+    pub struct StateLightAttributes<'a> {
+        min_color_temp_kelvin: u16,
+        max_color_temp_kelvin: u16,
+        min_mireds: u16,
+        max_mireds: u16,
+        supported_color_modes: Vec<ColorMode>,
+        #[serde(borrow)]
+        mode: Cow<'a, str>,
+        #[serde(borrow)]
+        dynamics: Cow<'a, str>,
+        #[serde(borrow)]
+        friendly_name: Cow<'a, str>,
+        color_mode: Option<ColorMode>,
+        brightness: Option<u8>,
+        color_temp_kelvin: Option<u16>,
+        color_temp: Option<u16>,
+        xy_color: Option<(u8, u8)>,
+    }
+
+    #[derive(Deserialize, Debug)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ColorMode {
+        ColorTemp,
+        Xy,
+    }
 }
