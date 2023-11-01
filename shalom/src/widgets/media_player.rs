@@ -72,8 +72,16 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
         container(
             row![
                 container(crate::widgets::track_card::track_card(
-                    self.device.media_artist.as_ref().unwrap().to_string(),
-                    self.device.media_title.as_ref().unwrap().to_string(),
+                    self.device
+                        .media_artist
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_default(),
+                    self.device
+                        .media_title
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_default(),
                     self.image.clone(),
                 ),)
                 .width(Length::FillPortion(8)),
@@ -120,11 +128,11 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
                             .style(Text::Color(SLATE_400))
                             .size(12),
                         slider(
-                            0.0..=self.device.media_duration.unwrap().as_secs_f64(),
+                            0.0..=self.device.media_duration.unwrap_or_default().as_secs_f64(),
                             state.track_position.as_secs_f64(),
                             Event::PositionChange
                         ),
-                        text(format_time(self.device.media_duration.unwrap()))
+                        text(format_time(self.device.media_duration.unwrap_or_default()))
                             .style(Text::Color(SLATE_400))
                             .size(12),
                     ]
