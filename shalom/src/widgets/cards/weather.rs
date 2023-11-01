@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use iced::{
     advanced::{
         layout::{Limits, Node},
@@ -17,30 +15,32 @@ use iced::{
     Size, Theme,
 };
 
-use crate::oracle::Oracle;
+use crate::oracle::Weather;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct WeatherCard<M> {
     pub on_click: Option<M>,
-    pub oracle: Arc<Oracle>,
+    pub current_weather: Weather,
+    pub day_time: bool,
 }
 
 impl<M> WeatherCard<M> {
-    pub fn new(oracle: Arc<Oracle>) -> Self {
+    pub fn new(current_weather: Weather) -> Self {
         Self {
+            current_weather,
             on_click: None,
-            oracle,
+            day_time: true,
         }
     }
 
     fn build_temperature(&self) -> String {
-        format!("{}°", self.oracle.weather.temperature)
+        format!("{}°", self.current_weather.temperature)
     }
 
     fn build_conditions(&self) -> String {
         format!(
             "{}\nH:{}° L:{}°",
-            self.oracle.weather.condition, self.oracle.weather.high, self.oracle.weather.low,
+            self.current_weather.condition, self.current_weather.high, self.current_weather.low,
         )
     }
 }
@@ -111,6 +111,16 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
         _cursor: Cursor,
         _viewport: &Rectangle,
     ) {
+        let gradient = if self.day_time {
+            Linear::new(Degrees(90.))
+                .add_stop(0.0, Color::from_rgba8(104, 146, 190, 1.0))
+                .add_stop(1.0, Color::from_rgba8(10, 54, 120, 1.0))
+        } else {
+            Linear::new(Degrees(90.))
+                .add_stop(0.0, Color::from_rgba8(43, 44, 66, 1.0))
+                .add_stop(1.0, Color::from_rgba8(15, 18, 27, 1.0))
+        };
+
         renderer.fill_quad(
             Quad {
                 bounds: layout.bounds(),
@@ -118,11 +128,7 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
                 border_width: 0.,
                 border_color: Color::WHITE,
             },
-            Background::Gradient(Gradient::Linear(
-                Linear::new(Degrees(90.))
-                    .add_stop(0.0, Color::from_rgba8(43, 44, 66, 1.0))
-                    .add_stop(1.0, Color::from_rgba8(15, 18, 27, 1.0)),
-            )),
+            Background::Gradient(Gradient::Linear(gradient)),
         );
 
         let mut children = layout.children();
@@ -143,7 +149,7 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
         });
 
         let icon_bounds = children.next().unwrap().bounds();
-        if let Some(icon) = self.oracle.weather.condition.icon(false) {
+        if let Some(icon) = self.current_weather.condition.icon(self.day_time) {
             renderer.draw(icon.handle(), None, icon_bounds);
         }
 

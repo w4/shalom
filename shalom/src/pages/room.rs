@@ -1,9 +1,14 @@
+use std::sync::Arc;
+
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
+    futures::StreamExt,
+    subscription,
     widget::{container, image::Handle, row, text, Column},
     Font, Renderer, Subscription,
 };
+use internment::Intern;
 use url::Url;
 
 use crate::{
@@ -15,17 +20,19 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Room {
+    oracle: Arc<Oracle>,
     room: crate::oracle::Room,
     speaker: Option<MediaPlayerSpeaker>,
     now_playing_image: Option<Handle>,
 }
 
 impl Room {
-    pub fn new(id: &'static str, oracle: &Oracle) -> Self {
+    pub fn new(id: &'static str, oracle: Arc<Oracle>) -> Self {
         let room = oracle.room(id).clone();
-        let speaker = room.speaker(oracle).cloned();
+        let speaker = room.speaker(&oracle);
 
         Self {
+            oracle,
             room,
             speaker,
             now_playing_image: None,
@@ -59,6 +66,25 @@ impl Room {
                 {
                     self.now_playing_image = Some(handle);
                 }
+
+                None
+            }
+            Message::UpdateSpeaker => {
+                let new = self.room.speaker(&self.oracle);
+
+                if self
+                    .speaker
+                    .as_ref()
+                    .and_then(|v| v.entity_picture.as_ref())
+                    != new
+                        .as_ref()
+                        .as_ref()
+                        .and_then(|v| v.entity_picture.as_ref())
+                {
+                    self.now_playing_image = None;
+                }
+
+                self.speaker = new;
 
                 None
             }
@@ -97,7 +123,7 @@ impl Room {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        if let (Some(uri), None) = (
+        let image_subscription = if let (Some(uri), None) = (
             self.speaker
                 .as_ref()
                 .and_then(|v| v.entity_picture.as_ref()),
@@ -106,7 +132,21 @@ impl Room {
             download_image(uri.clone(), uri.clone(), Message::NowPlayingImageLoaded)
         } else {
             Subscription::none()
-        }
+        };
+
+        let speaker_subscription =
+            if let Some(speaker_id) = self.room.speaker_id.map(Intern::as_ref) {
+                subscription::run_with_id(
+                    speaker_id,
+                    self.oracle
+                        .subscribe_id(speaker_id)
+                        .map(|()| Message::UpdateSpeaker),
+                )
+            } else {
+                Subscription::none()
+            };
+
+        Subscription::batch([image_subscription, speaker_subscription])
     }
 }
 
@@ -120,4 +160,5 @@ pub enum Message {
     LightToggle(&'static str),
     OpenLightOptions(&'static str),
     UpdateLightAmount(&'static str, u8),
+    UpdateSpeaker,
 }

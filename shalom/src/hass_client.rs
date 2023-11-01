@@ -1,12 +1,12 @@
 #![allow(clippy::forget_non_drop, dead_code)]
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use iced::futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 use yoke::{Yoke, Yokeable};
@@ -20,6 +20,7 @@ pub struct Client {
         HassRequestKind,
         oneshot::Sender<Yoke<&'static RawValue, String>>,
     )>,
+    broadcast_channel: broadcast::Sender<Arc<Yoke<Event<'static>, String>>>,
 }
 
 impl Client {
@@ -36,17 +37,24 @@ impl Client {
 
         resp.map_project(move |value, _| serde_json::from_str(value.get()).unwrap())
     }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<Arc<Yoke<Event<'static>, String>>> {
+        self.broadcast_channel.subscribe()
+    }
 }
 
 pub async fn create(config: HomeAssistantConfig) -> Client {
     let (sender, mut recv) = mpsc::channel(10);
 
-    let uri = format!("ws://{}/api/websocket", config.uri);
+    let uri = format!("wss://{}/api/websocket", config.uri);
     let (mut connection, _response) = tokio_tungstenite::connect_async(&uri).await.unwrap();
 
     let (ready_send, ready_recv) = oneshot::channel();
     let mut ready_send = Some(ready_send);
 
+    let (broadcast_channel, _broadcast_recv) = broadcast::channel(10);
+
+    let broadcast_send = broadcast_channel.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         let mut counter: u64 = 0;
@@ -91,11 +99,31 @@ pub async fn create(config: HomeAssistantConfig) -> Client {
                                 }
                                 HassResponseType::AuthOk => {
                                     ready_send.take().unwrap().send(()).unwrap();
+
+                                    counter += 1;
+                                    let counter = counter;
+
+                                    connection
+                                        .send(HassRequest {
+                                            id: Some(counter),
+                                            inner: HassRequestKind::SubscribeEvents {
+                                                event_type: Some("state_changed".to_string()),
+                                            },
+                                        }.to_request())
+                                        .await
+                                        .unwrap();
                                 }
                                 HassResponseType::Result => {
                                     let id = payload.id.unwrap();
-                                    let payload = yoked_payload.map_project(move |yk, _| yk.result.unwrap());
-                                    pending.remove(&id).unwrap().send(payload).unwrap();
+                                    let payload = yoked_payload.try_map_project(move |yk, _| yk.result.ok_or(()));
+
+                                    if let (Some(channel), Ok(payload)) = (pending.remove(&id), payload) {
+                                        let _res = channel.send(payload);
+                                    }
+                                }
+                                HassResponseType::Event => {
+                                    let payload = yoked_payload.map_project(move |yk, _| yk.event.unwrap());
+                                    let _res = broadcast_send.send(Arc::new(payload));
                                 }
                             }
                         }
@@ -127,27 +155,37 @@ pub async fn create(config: HomeAssistantConfig) -> Client {
     ready_recv.await.unwrap();
 
     Client {
-        base: Url::parse(&format!("http://{}/", config.uri)).unwrap(),
+        base: Url::parse(&format!("https://{}/", config.uri)).unwrap(),
         sender,
+        broadcast_channel,
     }
 }
 
-#[derive(Deserialize, Yokeable)]
+#[derive(Deserialize, Yokeable, Debug)]
 struct HassResponse<'a> {
     id: Option<u64>,
     #[serde(rename = "type")]
     type_: HassResponseType,
     #[serde(borrow)]
     result: Option<&'a RawValue>,
+    #[serde(borrow, bound(deserialize = "'a: 'de"))]
+    event: Option<Event<'a>>,
 }
 
-#[derive(Deserialize, Copy, Clone)]
+#[derive(Deserialize, Clone, Debug, Yokeable)]
+#[serde(rename_all = "snake_case", tag = "event_type", content = "data")]
+pub enum Event<'a> {
+    StateChanged(#[serde(borrow, bound(deserialize = "'a: 'de"))] events::StateChanged<'a>),
+}
+
+#[derive(Deserialize, Copy, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum HassResponseType {
     AuthRequired,
     AuthOk,
     AuthInvalid,
     Result,
+    Event,
 }
 
 #[derive(Serialize)]
@@ -171,11 +209,30 @@ pub enum HassRequestKind {
     EntityRegistry,
     #[serde(rename = "config/device_registry/list")]
     DeviceRegistry,
+    SubscribeEvents {
+        event_type: Option<String>,
+    },
 }
 
 impl HassRequest {
     pub fn to_request(&self) -> Message {
         Message::text(serde_json::to_string(&self).unwrap())
+    }
+}
+
+pub mod events {
+    use std::borrow::Cow;
+
+    use serde::Deserialize;
+
+    #[derive(Deserialize, Clone, Debug)]
+    pub struct StateChanged<'a> {
+        #[serde(borrow)]
+        pub entity_id: Cow<'a, str>,
+        #[serde(borrow, bound(deserialize = "'a: 'de"))]
+        pub old_state: super::responses::State<'a>,
+        #[serde(borrow, bound(deserialize = "'a: 'de"))]
+        pub new_state: super::responses::State<'a>,
     }
 }
 
@@ -287,7 +344,7 @@ pub mod responses {
     #[derive(Yokeable, Debug, Deserialize)]
     pub struct StatesList<'a>(#[serde(borrow, bound(deserialize = "'a: 'de"))] pub Vec<State<'a>>);
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct State<'a> {
         pub entity_id: Cow<'a, str>,
         pub state: Cow<'a, str>,
@@ -372,7 +429,7 @@ pub mod responses {
         }
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     #[allow(clippy::large_enum_variant)]
     pub enum StateAttributes<'a> {
         Sun(StateSunAttributes),
@@ -383,7 +440,7 @@ pub mod responses {
         Unknown,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone, Copy)]
     pub struct StateSunAttributes {
         // next_dawn: time::OffsetDateTime,
         // next_dusk: time::OffsetDateTime,
@@ -396,7 +453,7 @@ pub mod responses {
         rising: bool,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     pub struct StateMediaPlayerAttributes<'a> {
         #[serde(borrow, default)]
         pub source_list: Vec<Cow<'a, str>>,
@@ -428,14 +485,14 @@ pub mod responses {
         pub entity_picture: Option<Cow<'a, str>>,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     #[serde(untagged)]
     pub enum MediaContentId<'a> {
         Uri(#[serde(borrow)] Cow<'a, str>),
         Int(u32),
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     pub struct StateCameraAttributes<'a> {
         #[serde(borrow)]
         access_token: Cow<'a, str>,
@@ -523,7 +580,7 @@ pub mod responses {
         }
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     pub struct StateWeatherAttributes<'a> {
         pub temperature: f32,
         pub dew_point: f32,
@@ -546,7 +603,7 @@ pub mod responses {
         pub forecast: Vec<StateWeatherAttributesForecast<'a>>,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     pub struct StateWeatherAttributesForecast<'a> {
         #[serde(borrow)]
         pub condition: Cow<'a, str>,
@@ -560,7 +617,7 @@ pub mod responses {
         pub humidity: f32,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone)]
     pub struct StateLightAttributes<'a> {
         min_color_temp_kelvin: Option<u16>,
         max_color_temp_kelvin: Option<u16>,
@@ -581,7 +638,7 @@ pub mod responses {
         xy_color: Option<(f32, f32)>,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Clone, Copy)]
     #[serde(rename_all = "snake_case")]
     pub enum ColorMode {
         ColorTemp,

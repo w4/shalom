@@ -52,9 +52,7 @@ impl Application for Shalom {
             async {
                 let config = load_config().await;
                 let client = hass_client::create(config.home_assistant).await;
-                let oracle = Oracle::new(client.clone()).await;
-
-                Arc::new(oracle)
+                Oracle::new(client.clone()).await
             },
             Message::Loaded,
         );
@@ -73,7 +71,7 @@ impl Application for Shalom {
                 self.oracle = Some(oracle);
                 self.page = ActivePage::Room(pages::room::Room::new(
                     "living_room",
-                    self.oracle.as_deref().unwrap(),
+                    self.oracle.clone().unwrap(),
                 ));
             }
             (Message::CloseContextMenu, _) => {
@@ -86,7 +84,7 @@ impl Application for Shalom {
                 Some(pages::omni::Event::OpenRoom(room)) => {
                     self.page = ActivePage::Room(pages::room::Room::new(
                         room,
-                        self.oracle.as_deref().unwrap(),
+                        self.oracle.clone().unwrap(),
                     ));
                 }
                 None => {}
@@ -190,7 +188,8 @@ impl Application for Shalom {
     fn subscription(&self) -> Subscription<Self::Message> {
         match &self.page {
             ActivePage::Room(room) => room.subscription().map(Message::RoomEvent),
-            _ => Subscription::none(),
+            ActivePage::Omni(omni) => omni.subscription().map(Message::OmniEvent),
+            ActivePage::Loading => Subscription::none(),
         }
     }
 }

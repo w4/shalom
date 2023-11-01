@@ -1,23 +1,33 @@
-use std::sync::Arc;
+use std::{any::TypeId, sync::Arc};
 
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
+    futures::StreamExt,
+    subscription,
     widget::{column, scrollable, text, Column, Row},
-    Font, Renderer,
+    Font, Renderer, Subscription,
 };
 use itertools::Itertools;
 
-use crate::{oracle::Oracle, theme::Image, widgets::image_card};
+use crate::{
+    oracle::{Oracle, Weather},
+    theme::Image,
+    widgets::image_card,
+};
 
 #[derive(Debug)]
 pub struct Omni {
     oracle: Arc<Oracle>,
+    weather: Weather,
 }
 
 impl Omni {
     pub fn new(oracle: Arc<Oracle>) -> Self {
-        Self { oracle }
+        Self {
+            weather: oracle.current_weather(),
+            oracle,
+        }
     }
 }
 
@@ -30,6 +40,10 @@ impl Omni {
     pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
             Message::OpenRoom(room) => Some(Event::OpenRoom(room)),
+            Message::UpdateWeather => {
+                self.weather = self.oracle.current_weather();
+                None
+            }
         }
     }
 
@@ -58,13 +72,24 @@ impl Omni {
         scrollable(
             column![
                 greeting,
-                crate::widgets::cards::weather::WeatherCard::new(self.oracle.clone()),
+                crate::widgets::cards::weather::WeatherCard::new(self.weather),
                 rooms,
             ]
             .spacing(20)
             .padding(40),
         )
         .into()
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        pub struct WeatherSubscription;
+
+        subscription::run_with_id(
+            TypeId::of::<WeatherSubscription>(),
+            self.oracle
+                .subscribe_weather()
+                .map(|()| Message::UpdateWeather),
+        )
     }
 }
 
@@ -89,4 +114,5 @@ pub enum Event {
 #[derive(Clone, Debug)]
 pub enum Message {
     OpenRoom(&'static str),
+    UpdateWeather,
 }
