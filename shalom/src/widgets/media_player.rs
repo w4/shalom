@@ -3,11 +3,14 @@ use std::{fmt::Display, time::Duration};
 use iced::{
     advanced::graphics::core::Element,
     theme::{Svg, Text},
-    widget::{column as icolumn, component, container, row, slider, svg, text, Component},
+    widget::{
+        column as icolumn, component, container, image::Handle, row, slider, svg, text, Component,
+    },
     Alignment, Length, Renderer, Theme,
 };
 
 use crate::{
+    oracle::MediaPlayerSpeaker,
     theme::{
         colours::{SKY_500, SLATE_400, SLATE_600},
         Icon,
@@ -15,34 +18,23 @@ use crate::{
     widgets::mouse_area::mouse_area,
 };
 
-pub fn media_player<M>() -> MediaPlayer<M> {
-    MediaPlayer::default()
+pub fn media_player<M>(device: MediaPlayerSpeaker, image: Option<Handle>) -> MediaPlayer<M> {
+    MediaPlayer {
+        height: Length::Shrink,
+        width: Length::Fill,
+        device,
+        image,
+        _on_something: None,
+    }
 }
 
+#[derive(Clone)]
 pub struct MediaPlayer<M> {
     height: Length,
     width: Length,
-    now_playing: NowPlaying,
-    on_something: Option<M>,
-    track_length: Duration,
-}
-
-impl<M> Default for MediaPlayer<M> {
-    fn default() -> Self {
-        Self {
-            height: Length::Shrink,
-            width: Length::Fill,
-            now_playing: NowPlaying {
-                album_art: "https://i.scdn.co/image/ab67616d00004851d771166c366eff01950de570"
-                    .to_string(),
-                song: "Almost Had to Start a Fight/In and Out of Patience".to_string(),
-                artist: "Parquet Court".to_string(),
-                loved: true,
-            },
-            on_something: None,
-            track_length: Duration::from_secs(194),
-        }
-    }
+    device: MediaPlayerSpeaker,
+    image: Option<Handle>,
+    _on_something: Option<M>,
 }
 
 impl<M> Component<M, Renderer> for MediaPlayer<M> {
@@ -80,9 +72,9 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
         container(
             row![
                 container(crate::widgets::track_card::track_card(
-                    self.now_playing.artist.clone(),
-                    self.now_playing.song.clone(),
-                    false,
+                    self.device.media_artist.as_ref().unwrap().to_string(),
+                    self.device.media_title.as_ref().unwrap().to_string(),
+                    self.image.clone(),
                 ),)
                 .width(Length::FillPortion(8)),
                 icolumn![
@@ -128,11 +120,11 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
                             .style(Text::Color(SLATE_400))
                             .size(12),
                         slider(
-                            0.0..=self.track_length.as_secs_f64(),
+                            0.0..=self.device.media_duration.unwrap().as_secs_f64(),
                             state.track_position.as_secs_f64(),
                             Event::PositionChange
                         ),
-                        text(format_time(self.track_length))
+                        text(format_time(self.device.media_duration.unwrap()))
                             .style(Text::Color(SLATE_400))
                             .size(12),
                     ]
@@ -167,15 +159,9 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
         .width(self.width)
         .center_x()
         .center_y()
+        // .style(Container::Custom(Box::new(Style::Inactive)))
         .into()
     }
-}
-
-pub struct NowPlaying {
-    album_art: String,
-    song: String,
-    artist: String,
-    loved: bool,
 }
 
 #[derive(Default)]
@@ -218,6 +204,20 @@ pub enum Style {
     Active,
     Inactive,
 }
+
+// impl container::StyleSheet for Style {
+//     type Style = Theme;
+//
+//     fn appearance(&self, style: &Self::Style) -> container::Appearance {
+//         container::Appearance {
+//             text_color: None,
+//             background: Some(Background::Color(SLATE_200)),
+//             border_radius: Default::default(),
+//             border_width: 0.0,
+//             border_color: Default::default(),
+//         }
+//     }
+// }
 
 impl svg::StyleSheet for Style {
     type Style = Theme;

@@ -1,100 +1,123 @@
-use std::collections::HashMap;
-
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
-    widget::{column, component, container, row, text, Component},
-    Font, Renderer,
+    widget::{container, image::Handle, row, text, Column},
+    Font, Renderer, Subscription,
+};
+use url::Url;
+
+use crate::{
+    oracle::{MediaPlayerSpeaker, Oracle},
+    subscriptions::download_image,
+    theme::Icon,
+    widgets,
 };
 
-use crate::{theme::Icon, widgets, ActiveContextMenu};
-
-pub struct Room<M> {
-    name: &'static str,
-    open_context_menu: fn(ActiveContextMenu) -> M,
+#[derive(Debug)]
+pub struct Room {
+    room: crate::oracle::Room,
+    speaker: Option<MediaPlayerSpeaker>,
+    now_playing_image: Option<Handle>,
 }
 
-impl<M> Room<M> {
-    pub fn new(name: &'static str, open_context_menu: fn(ActiveContextMenu) -> M) -> Self {
+impl Room {
+    pub fn new(id: &'static str, oracle: &Oracle) -> Self {
+        let room = oracle.room(id).clone();
+        let speaker = room.speaker(oracle).cloned();
+
         Self {
-            name,
-            open_context_menu,
+            room,
+            speaker,
+            now_playing_image: None,
         }
     }
-}
 
-impl<M: Clone> Component<M, Renderer> for Room<M> {
-    type State = State;
-    type Event = Event;
-
-    fn update(&mut self, state: &mut Self::State, event: Self::Event) -> Option<M> {
+    pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
-            Event::LightToggle(name) => {
-                let x = state.lights.entry(name).or_default();
-                if *x == 0 {
-                    *x = 1;
-                } else {
-                    *x = 0;
+            Message::LightToggle(_name) => {
+                // let x = state.lights.entry(name).or_default();
+                // if *x == 0 {
+                //     *x = 1;
+                // } else {
+                //     *x = 0;
+                // }
+                //
+                None
+            }
+            Message::OpenLightOptions(name) => Some(Event::OpenLightContextMenu(name)),
+            Message::UpdateLightAmount(_name, _v) => {
+                // let x = state.lights.entry(name).or_default();
+                // *x = v;
+                None
+            }
+            Message::NowPlayingImageLoaded(url, handle) => {
+                if self
+                    .speaker
+                    .as_ref()
+                    .and_then(|v| v.entity_picture.as_ref())
+                    == Some(&url)
+                {
+                    self.now_playing_image = Some(handle);
                 }
 
                 None
             }
-            Event::OpenLightOptions(name) => Some((self.open_context_menu)(
-                ActiveContextMenu::LightOptions(name),
-            )),
-            Event::UpdateLightAmount(name, v) => {
-                let x = state.lights.entry(name).or_default();
-                *x = v;
-                None
-            }
         }
     }
 
-    fn view(&self, state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let header = text(self.name).size(60).font(Font {
+    pub fn view(&self) -> Element<'_, Message, Renderer> {
+        let header = text(self.room.name.as_ref()).size(60).font(Font {
             weight: Weight::Bold,
             stretch: Stretch::Condensed,
             ..Font::with_name("Helvetica Neue")
         });
 
         let light = |name| {
-            widgets::toggle_card::toggle_card(
-                name,
-                state.lights.get(name).copied().unwrap_or_default() > 0,
-            )
-            .icon(Icon::Bulb)
-            .on_press(Event::LightToggle(name))
-            .on_long_press(Event::OpenLightOptions(name))
+            widgets::toggle_card::toggle_card(name, false)
+                .icon(Icon::Bulb)
+                .on_press(Message::LightToggle(name))
+                .on_long_press(Message::OpenLightOptions(name))
         };
 
-        column![
-            header,
-            container(widgets::media_player::media_player()).padding([12, 0, 24, 0]),
-            row![light("Main"), light("Lamp"), light("TV")].spacing(10),
-        ]
-        .spacing(20)
-        .padding(40)
-        .into()
+        let mut col = Column::new().spacing(20).padding(40).push(header);
+
+        if let Some(speaker) = self.speaker.clone() {
+            col = col.push(
+                container(widgets::media_player::media_player(
+                    speaker,
+                    self.now_playing_image.clone(),
+                ))
+                .padding([12, 0, 24, 0]),
+            );
+        }
+
+        col = col.push(row![light("Main"), light("Lamp"), light("TV")].spacing(10));
+
+        col.into()
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        if let (Some(uri), None) = (
+            self.speaker
+                .as_ref()
+                .and_then(|v| v.entity_picture.as_ref()),
+            &self.now_playing_image,
+        ) {
+            download_image(uri.clone(), uri.clone(), Message::NowPlayingImageLoaded)
+        } else {
+            Subscription::none()
+        }
     }
 }
 
-#[derive(Default)]
-pub struct State {
-    lights: HashMap<&'static str, u8>,
+pub enum Event {
+    OpenLightContextMenu(&'static str),
 }
 
-#[derive(Clone)]
-pub enum Event {
+#[derive(Clone, Debug)]
+pub enum Message {
+    NowPlayingImageLoaded(Url, Handle),
     LightToggle(&'static str),
     OpenLightOptions(&'static str),
     UpdateLightAmount(&'static str, u8),
-}
-
-impl<'a, M> From<Room<M>> for Element<'a, M, Renderer>
-where
-    M: 'a + Clone,
-{
-    fn from(card: Room<M>) -> Self {
-        component(card)
-    }
 }

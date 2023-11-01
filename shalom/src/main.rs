@@ -4,6 +4,7 @@ mod config;
 mod hass_client;
 mod oracle;
 mod pages;
+mod subscriptions;
 mod theme;
 mod widgets;
 
@@ -13,7 +14,8 @@ use iced::{
     alignment::{Horizontal, Vertical},
     font::{Stretch, Weight},
     widget::{column, container, row, scrollable, svg, text, vertical_slider, Column},
-    Alignment, Application, Command, ContentFit, Element, Font, Length, Renderer, Settings, Theme,
+    Alignment, Application, Command, ContentFit, Element, Font, Length, Renderer, Settings,
+    Subscription, Theme,
 };
 
 use crate::{
@@ -26,7 +28,6 @@ use crate::{
 pub struct Shalom {
     page: ActivePage,
     context_menu: Option<ActiveContextMenu>,
-    homepage: ActivePage,
     oracle: Option<Arc<Oracle>>,
 }
 
@@ -40,7 +41,6 @@ impl Application for Shalom {
         let this = Self {
             page: ActivePage::Loading,
             context_menu: None,
-            homepage: ActivePage::Room("Living Room"),
             oracle: None,
         };
 
@@ -67,20 +67,37 @@ impl Application for Shalom {
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
-        match message {
-            Message::Loaded(oracle) => {
-                self.page = self.homepage.clone();
+        #[allow(clippy::single_match)]
+        match (message, &mut self.page) {
+            (Message::Loaded(oracle), _) => {
                 self.oracle = Some(oracle);
+                self.page = ActivePage::Room(pages::room::Room::new(
+                    "living_room",
+                    self.oracle.as_deref().unwrap(),
+                ));
             }
-            Message::CloseContextMenu => {
+            (Message::CloseContextMenu, _) => {
                 self.context_menu = None;
             }
-            Message::OpenContextMenu(menu) => {
-                self.context_menu = Some(menu);
+            (Message::OpenOmniPage, _) => {
+                self.page = ActivePage::Omni(pages::omni::Omni::new(self.oracle.clone().unwrap()));
             }
-            Message::ChangePage(page) => {
-                self.page = page;
-            }
+            (Message::OmniEvent(e), ActivePage::Omni(r)) => match r.update(e) {
+                Some(pages::omni::Event::OpenRoom(room)) => {
+                    self.page = ActivePage::Room(pages::room::Room::new(
+                        room,
+                        self.oracle.as_deref().unwrap(),
+                    ));
+                }
+                None => {}
+            },
+            (Message::RoomEvent(e), ActivePage::Room(r)) => match r.update(e) {
+                Some(pages::room::Event::OpenLightContextMenu(light)) => {
+                    self.context_menu = Some(ActiveContextMenu::LightOptions(light));
+                }
+                None => {}
+            },
+            _ => {}
         }
 
         Command::none()
@@ -89,21 +106,16 @@ impl Application for Shalom {
     fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
         let page_content = match &self.page {
             ActivePage::Loading => Element::from(column!["Loading...",].spacing(20)),
-            ActivePage::Room(room) => {
-                Element::from(pages::room::Room::new(room, Message::OpenContextMenu))
-            }
-            ActivePage::Omni => Element::from(pages::omni::Omni::new(
-                self.oracle.clone().unwrap(),
-                Message::ChangePage,
-            )),
+            ActivePage::Room(room) => room.view().map(Message::RoomEvent),
+            ActivePage::Omni(omni) => omni.view().map(Message::OmniEvent),
         };
 
         let mut content = Column::new().push(scrollable(page_content));
 
         let (show_back, show_home) = match &self.page {
-            _ if self.page == self.homepage => (true, false),
+            // _ if self.page == self.homepage => (true, false),
             ActivePage::Loading => (false, false),
-            ActivePage::Omni => (false, true),
+            ActivePage::Omni(_) => (false, true),
             ActivePage::Room(_) => (true, true),
         };
 
@@ -113,14 +125,14 @@ impl Application for Shalom {
                 .width(32)
                 .content_fit(ContentFit::None),
         )
-        .on_press(Message::ChangePage(ActivePage::Omni));
+        .on_press(Message::OpenOmniPage);
         let home = mouse_area(
             svg(Icon::Home)
                 .height(32)
                 .width(32)
                 .content_fit(ContentFit::None),
-        )
-        .on_press(Message::ChangePage(self.homepage.clone()));
+        );
+        // .on_press(Message::ChangePage(self.homepage.clone()));
 
         let navigation = match (show_back, show_home) {
             (true, true) => Some(Element::from(
@@ -174,6 +186,13 @@ impl Application for Shalom {
             content.into()
         }
     }
+
+    fn subscription(&self) -> Subscription<Self::Message> {
+        match &self.page {
+            ActivePage::Room(room) => room.subscription().map(Message::RoomEvent),
+            _ => Subscription::none(),
+        }
+    }
 }
 
 async fn load_config() -> Config {
@@ -185,15 +204,17 @@ async fn load_config() -> Config {
 pub enum Message {
     Loaded(Arc<Oracle>),
     CloseContextMenu,
-    ChangePage(ActivePage),
-    OpenContextMenu(ActiveContextMenu),
+    OpenOmniPage,
+    OmniEvent(pages::omni::Message),
+    RoomEvent(pages::room::Message),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ActivePage {
     Loading,
-    Room(&'static str),
-    Omni,
+    Room(pages::room::Room),
+    Omni(pages::omni::Omni),
 }
 
 #[derive(Clone, Debug)]

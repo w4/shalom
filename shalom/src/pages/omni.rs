@@ -3,43 +3,45 @@ use std::sync::Arc;
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
-    widget::{column, component, scrollable, text, Column, Component, Row},
+    widget::{column, scrollable, text, Column, Row},
     Font, Renderer,
 };
 use itertools::Itertools;
 
-use crate::{oracle::Oracle, theme::Image, widgets::image_card, ActivePage};
+use crate::{oracle::Oracle, theme::Image, widgets::image_card};
 
-pub struct Omni<M> {
+#[derive(Debug)]
+pub struct Omni {
     oracle: Arc<Oracle>,
-    open_page: fn(ActivePage) -> M,
 }
 
-impl<M> Omni<M> {
-    pub fn new(oracle: Arc<Oracle>, open_page: fn(ActivePage) -> M) -> Self {
-        Self { oracle, open_page }
+impl Omni {
+    pub fn new(oracle: Arc<Oracle>) -> Self {
+        Self { oracle }
     }
 }
 
-impl<M: Clone> Component<M, Renderer> for Omni<M> {
-    type State = State;
-    type Event = Event;
-
-    fn update(&mut self, _state: &mut Self::State, event: Self::Event) -> Option<M> {
+impl Omni {
+    #[allow(
+        clippy::unnecessary_wraps,
+        clippy::needless_pass_by_value,
+        clippy::unused_self
+    )]
+    pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
-            Event::OpenRoom(room) => Some((self.open_page)(ActivePage::Room(room))),
+            Message::OpenRoom(room) => Some(Event::OpenRoom(room)),
         }
     }
 
-    fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
+    pub fn view(&self) -> Element<'_, Message, Renderer> {
         let greeting = text("Good Evening").size(60).font(Font {
             weight: Weight::Bold,
             stretch: Stretch::Condensed,
             ..Font::with_name("Helvetica Neue")
         });
 
-        let room = |room, image| {
-            image_card::image_card(image, room).on_press(Event::OpenRoom(room))
+        let room = |id, room, image| {
+            image_card::image_card(image, room).on_press(Message::OpenRoom(id))
             // .height(Length::Fixed(128.0))
             // .width(Length::FillPortion(1))
         };
@@ -47,7 +49,7 @@ impl<M: Clone> Component<M, Renderer> for Omni<M> {
         let rooms = self
             .oracle
             .rooms()
-            .map(|r| room(r.name.as_ref(), determine_image(&r.name)))
+            .map(|(id, r)| room(id, r.name.as_ref(), determine_image(&r.name)))
             .chunks(2)
             .into_iter()
             .map(|children| children.into_iter().fold(Row::new().spacing(10), Row::push))
@@ -79,16 +81,12 @@ fn determine_image(name: &str) -> Image {
 #[derive(Default, Hash)]
 pub struct State {}
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Event {
     OpenRoom(&'static str),
 }
 
-impl<'a, M> From<Omni<M>> for Element<'a, M, Renderer>
-where
-    M: 'a + Clone,
-{
-    fn from(card: Omni<M>) -> Self {
-        component(card)
-    }
+#[derive(Clone, Debug)]
+pub enum Message {
+    OpenRoom(&'static str),
 }

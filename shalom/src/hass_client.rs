@@ -1,4 +1,4 @@
-#![allow(clippy::forget_non_drop)]
+#![allow(clippy::forget_non_drop, dead_code)]
 
 use std::{collections::HashMap, time::Duration};
 
@@ -8,12 +8,14 @@ use serde_json::value::RawValue;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
+use url::Url;
 use yoke::{Yoke, Yokeable};
 
 use crate::config::HomeAssistantConfig;
 
 #[derive(Clone, Debug)]
 pub struct Client {
+    pub base: url::Url,
     sender: mpsc::Sender<(
         HassRequestKind,
         oneshot::Sender<Yoke<&'static RawValue, String>>,
@@ -124,7 +126,10 @@ pub async fn create(config: HomeAssistantConfig) -> Client {
 
     ready_recv.await.unwrap();
 
-    Client { sender }
+    Client {
+        base: Url::parse(&format!("http://{}/", config.uri)).unwrap(),
+        sender,
+    }
 }
 
 #[derive(Deserialize, Yokeable)]
@@ -215,10 +220,10 @@ pub mod responses {
         pub area_id: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub configuration_url: Option<Cow<'a, str>>,
-        #[serde(borrow)]
+        #[serde(borrow, default)]
         pub config_entries: Vec<Cow<'a, str>>,
         #[serde(borrow)]
-        pub connections: Vec<(Cow<'a, str>, Cow<'a, str>)>,
+        pub connections: Vec<Vec<Cow<'a, str>>>,
         #[serde(borrow)]
         pub disabled_by: Option<Cow<'a, str>>,
         #[serde(borrow)]
@@ -227,16 +232,16 @@ pub mod responses {
         pub hw_version: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub id: Cow<'a, str>,
+        #[serde(borrow, default)]
+        pub identifiers: Vec<Vec<Cow<'a, str>>>,
         #[serde(borrow)]
-        pub identifiers: Vec<(Cow<'a, str>, Cow<'a, str>)>,
-        #[serde(borrow)]
-        pub manufacturer: Cow<'a, str>,
+        pub manufacturer: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub model: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub name_by_user: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        pub name: Cow<'a, str>,
+        pub name: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub sw_version: Option<Cow<'a, str>>,
         #[serde(borrow)]
@@ -251,7 +256,7 @@ pub mod responses {
         #[serde(borrow)]
         pub area_id: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        pub config_entry_id: Cow<'a, str>,
+        pub config_entry_id: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub device_id: Option<Cow<'a, str>>,
         #[serde(borrow)]
@@ -270,9 +275,9 @@ pub mod responses {
         #[serde(borrow)]
         pub name: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        pub original_name: Cow<'a, str>,
+        pub original_name: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        pub platform: Cow<'a, str>,
+        pub platform: Option<Cow<'a, str>>,
         #[serde(borrow)]
         pub translation_key: Option<Cow<'a, str>>,
         #[serde(borrow)]
@@ -345,7 +350,7 @@ pub mod responses {
             };
 
             let attributes = match kind {
-                "sun" => StateAttributes::Light(serde_json::from_str(attributes.get()).unwrap()),
+                "sun" => StateAttributes::Sun(serde_json::from_str(attributes.get()).unwrap()),
                 "media_player" => {
                     StateAttributes::MediaPlayer(serde_json::from_str(attributes.get()).unwrap())
                 }
@@ -368,6 +373,7 @@ pub mod responses {
     }
 
     #[derive(Deserialize, Debug)]
+    #[allow(clippy::large_enum_variant)]
     pub enum StateAttributes<'a> {
         Sun(StateSunAttributes),
         MediaPlayer(#[serde(borrow)] StateMediaPlayerAttributes<'a>),
@@ -393,26 +399,40 @@ pub mod responses {
     #[derive(Deserialize, Debug)]
     pub struct StateMediaPlayerAttributes<'a> {
         #[serde(borrow, default)]
-        source_list: Vec<Cow<'a, str>>,
+        pub source_list: Vec<Cow<'a, str>>,
         #[serde(borrow, default)]
-        group_members: Vec<Cow<'a, str>>,
-        volume_level: Option<f32>,
-        is_volume_muted: Option<bool>,
+        pub group_members: Vec<Cow<'a, str>>,
+        pub volume_level: Option<f32>,
+        pub is_volume_muted: Option<bool>,
         #[serde(borrow)]
-        media_content_id: Option<Cow<'a, str>>,
+        pub media_content_id: Option<MediaContentId<'a>>,
         #[serde(borrow)]
-        media_content_type: Option<Cow<'a, str>>,
+        pub media_content_type: Option<Cow<'a, str>>,
+        pub media_duration: Option<u64>,
+        pub media_position: Option<u64>,
+        pub media_title: Option<Cow<'a, str>>,
+        pub media_artist: Option<Cow<'a, str>>,
+        pub media_album_name: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        source: Option<Cow<'a, str>>,
-        shuffle: Option<bool>,
+        pub source: Option<Cow<'a, str>>,
+        pub shuffle: Option<bool>,
         #[serde(borrow)]
-        repeat: Option<Cow<'a, str>>,
-        queue_position: Option<u32>,
-        queue_size: Option<u32>,
+        pub repeat: Option<Cow<'a, str>>,
+        pub queue_position: Option<u32>,
+        pub queue_size: Option<u32>,
         #[serde(borrow)]
-        device_class: Option<Cow<'a, str>>,
+        pub device_class: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        friendly_name: Option<Cow<'a, str>>,
+        pub friendly_name: Option<Cow<'a, str>>,
+        #[serde(borrow)]
+        pub entity_picture: Option<Cow<'a, str>>,
+    }
+
+    #[derive(Deserialize, Debug)]
+    #[serde(untagged)]
+    pub enum MediaContentId<'a> {
+        Uri(#[serde(borrow)] Cow<'a, str>),
+        Int(u32),
     }
 
     #[derive(Deserialize, Debug)]
@@ -433,7 +453,7 @@ pub mod responses {
         entity_picture: Cow<'a, str>,
     }
 
-    #[derive(Deserialize, Debug, EnumString, Copy, Clone)]
+    #[derive(Default, Deserialize, Debug, EnumString, Copy, Clone)]
     #[serde(rename_all = "kebab-case")]
     #[strum(serialize_all = "kebab-case")]
     pub enum WeatherCondition {
@@ -454,6 +474,7 @@ pub mod responses {
         Windy,
         WindyVariant,
         Exceptional,
+        #[default]
         #[serde(other)]
         Unknown,
     }

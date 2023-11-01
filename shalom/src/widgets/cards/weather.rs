@@ -19,6 +19,7 @@ use iced::{
 
 use crate::oracle::Oracle;
 
+#[allow(clippy::module_name_repetitions)]
 pub struct WeatherCard<M> {
     pub on_click: Option<M>,
     pub oracle: Arc<Oracle>,

@@ -2,27 +2,27 @@ use iced::{
     advanced::graphics::core::Element,
     theme::Text,
     widget::{
-        column as icolumn, component,
+        column as icolumn, component, container,
         image::{self, Image},
-        row, text, Component,
+        row, text, vertical_space, Component,
     },
-    Alignment, Renderer,
+    Alignment, Background, Renderer, Theme,
 };
 
 use crate::theme::colours::SLATE_400;
 
-pub fn track_card(artist: String, song: String, loved: bool) -> TrackCard {
+pub fn track_card(artist: String, song: String, image: Option<image::Handle>) -> TrackCard {
     TrackCard {
         artist,
         song,
-        loved,
+        image,
     }
 }
 
 pub struct TrackCard {
     artist: String,
     song: String,
-    loved: bool,
+    image: Option<image::Handle>,
 }
 
 impl<M> Component<M, Renderer> for TrackCard {
@@ -34,10 +34,20 @@ impl<M> Component<M, Renderer> for TrackCard {
     }
 
     fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
+        let image =
+            if let Some(handle) = self.image.clone() {
+                Element::from(Image::new(handle).width(64).height(64))
+            } else {
+                Element::from(container(vertical_space(0)).width(64).height(64).style(
+                    |_t: &Theme| container::Appearance {
+                        background: Some(Background::Color(SLATE_400)),
+                        ..container::Appearance::default()
+                    },
+                ))
+            };
+
         row![
-            Image::new(image::Handle::from_path("/tmp/tmp.jpg"))
-                .width(64)
-                .height(64),
+            image,
             icolumn![
                 text(&self.song).size(14),
                 text(&self.artist).style(Text::Color(SLATE_400)).size(14)
