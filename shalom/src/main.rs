@@ -14,7 +14,7 @@ use iced::{
     alignment::{Horizontal, Vertical},
     font::{Stretch, Weight},
     widget::{column, container, row, scrollable, svg, text, vertical_slider, Column},
-    Alignment, Application, Command, ContentFit, Element, Font, Length, Renderer, Settings,
+    window, Alignment, Application, Command, ContentFit, Element, Font, Length, Renderer, Settings,
     Subscription, Theme,
 };
 
@@ -225,6 +225,10 @@ pub enum ActiveContextMenu {
 fn main() {
     Shalom::run(Settings {
         antialiasing: true,
+        window: window::Settings {
+            min_size: Some((600, 600)),
+            ..window::Settings::default()
+        },
         ..Settings::default()
     })
     .unwrap();
