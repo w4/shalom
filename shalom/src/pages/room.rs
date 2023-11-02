@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     futures::StreamExt,
     subscription,
-    widget::{container, image::Handle, row, text, Column},
+    widget::{container, image::Handle, text, Column, Row},
     Font, Renderer, Subscription,
 };
 use internment::Intern;
@@ -24,6 +24,7 @@ pub struct Room {
     room: crate::oracle::Room,
     speaker: Option<MediaPlayerSpeaker>,
     now_playing_image: Option<Handle>,
+    lights: BTreeMap<&'static str, Box<str>>,
 }
 
 impl Room {
@@ -31,11 +32,14 @@ impl Room {
         let room = oracle.room(id).clone();
         let speaker = room.speaker(&oracle);
 
+        let lights = room.light_names(&oracle);
+
         Self {
             oracle,
             room,
             speaker,
             now_playing_image: None,
+            lights,
         }
     }
 
@@ -98,11 +102,11 @@ impl Room {
             ..Font::with_name("Helvetica Neue")
         });
 
-        let light = |name| {
+        let light = |id, name| {
             widgets::toggle_card::toggle_card(name, false)
                 .icon(Icon::Bulb)
-                .on_press(Message::LightToggle(name))
-                .on_long_press(Message::OpenLightOptions(name))
+                .on_press(Message::LightToggle(id))
+                .on_long_press(Message::OpenLightOptions(id))
         };
 
         let mut col = Column::new().spacing(20).padding(40).push(header);
@@ -117,7 +121,15 @@ impl Room {
             );
         }
 
-        col = col.push(row![light("Main"), light("Lamp"), light("TV")].spacing(10));
+        let lights = Row::with_children(
+            self.lights
+                .iter()
+                .map(|(id, name)| light(*id, name))
+                .map(Element::from)
+                .collect::<Vec<_>>(),
+        )
+        .spacing(10);
+        col = col.push(lights);
 
         col.into()
     }

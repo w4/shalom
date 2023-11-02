@@ -1,6 +1,7 @@
 #![deny(clippy::pedantic)]
 
 mod config;
+mod context_menus;
 mod hass_client;
 mod oracle;
 mod pages;
@@ -12,10 +13,9 @@ use std::sync::Arc;
 
 use iced::{
     alignment::{Horizontal, Vertical},
-    font::{Stretch, Weight},
-    widget::{column, container, row, scrollable, svg, text, vertical_slider, Column},
-    window, Alignment, Application, Command, ContentFit, Element, Font, Length, Renderer, Settings,
-    Subscription, Theme,
+    widget::{column, container, row, scrollable, svg, Column},
+    window, Application, Command, ContentFit, Element, Length, Renderer, Settings, Subscription,
+    Theme,
 };
 
 use crate::{
@@ -66,21 +66,21 @@ impl Application for Shalom {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         #[allow(clippy::single_match)]
-        match (message, &mut self.page) {
-            (Message::Loaded(oracle), _) => {
+        match (message, &mut self.page, &mut self.context_menu) {
+            (Message::Loaded(oracle), _, _) => {
                 self.oracle = Some(oracle);
                 self.page = ActivePage::Room(pages::room::Room::new(
                     "living_room",
                     self.oracle.clone().unwrap(),
                 ));
             }
-            (Message::CloseContextMenu, _) => {
+            (Message::CloseContextMenu, _, _) => {
                 self.context_menu = None;
             }
-            (Message::OpenOmniPage, _) => {
+            (Message::OpenOmniPage, _, _) => {
                 self.page = ActivePage::Omni(pages::omni::Omni::new(self.oracle.clone().unwrap()));
             }
-            (Message::OmniEvent(e), ActivePage::Omni(r)) => match r.update(e) {
+            (Message::OmniEvent(e), ActivePage::Omni(r), _) => match r.update(e) {
                 Some(pages::omni::Event::OpenRoom(room)) => {
                     self.page = ActivePage::Room(pages::room::Room::new(
                         room,
@@ -89,12 +89,19 @@ impl Application for Shalom {
                 }
                 None => {}
             },
-            (Message::RoomEvent(e), ActivePage::Room(r)) => match r.update(e) {
+            (Message::RoomEvent(e), ActivePage::Room(r), _) => match r.update(e) {
                 Some(pages::room::Event::OpenLightContextMenu(light)) => {
-                    self.context_menu = Some(ActiveContextMenu::LightOptions(light));
+                    self.context_menu = Some(ActiveContextMenu::LightControl(
+                        context_menus::light_control::LightControl::new(light),
+                    ));
                 }
                 None => {}
             },
+            (Message::LightControlMenu(e), _, Some(ActiveContextMenu::LightControl(menu))) => {
+                match menu.update(e) {
+                    Some(_) | None => {}
+                }
+            }
             _ => {}
         }
 
@@ -164,17 +171,7 @@ impl Application for Shalom {
 
         if let Some(context_menu) = &self.context_menu {
             let context_menu = match context_menu {
-                ActiveContextMenu::LightOptions(name) => container(column![
-                    text(name).size(40).font(Font {
-                        weight: Weight::Bold,
-                        stretch: Stretch::Condensed,
-                        ..Font::with_name("Helvetica Neue")
-                    }),
-                    row![vertical_slider(0..=100, 0, |_v| Message::CloseContextMenu).height(200)]
-                        .align_items(Alignment::Center)
-                ])
-                .width(Length::Fill)
-                .padding(40),
+                ActiveContextMenu::LightControl(menu) => menu.view().map(Message::LightControlMenu),
             };
 
             ContextMenu::new(content, context_menu)
@@ -206,6 +203,7 @@ pub enum Message {
     OpenOmniPage,
     OmniEvent(pages::omni::Message),
     RoomEvent(pages::room::Message),
+    LightControlMenu(context_menus::light_control::Message),
 }
 
 #[derive(Debug)]
@@ -218,7 +216,7 @@ pub enum ActivePage {
 
 #[derive(Clone, Debug)]
 pub enum ActiveContextMenu {
-    LightOptions(&'static str),
+    LightControl(context_menus::light_control::LightControl),
 }
 
 fn main() {

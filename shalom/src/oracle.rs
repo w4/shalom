@@ -1,5 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet, HashMap},
     str::FromStr,
     sync::{Arc, Mutex},
     time::Duration,
@@ -14,8 +15,9 @@ use url::Url;
 
 use crate::hass_client::{
     responses::{
-        Area, AreaRegistryList, DeviceRegistryList, Entity, EntityRegistryList, StateAttributes,
-        StateMediaPlayerAttributes, StateWeatherAttributes, StatesList, WeatherCondition,
+        Area, AreaRegistryList, ColorMode, DeviceRegistryList, Entity, EntityRegistryList,
+        StateAttributes, StateLightAttributes, StateMediaPlayerAttributes, StateWeatherAttributes,
+        StatesList, WeatherCondition,
     },
     Event, HassRequestKind,
 };
@@ -25,8 +27,9 @@ use crate::hass_client::{
 pub struct Oracle {
     client: crate::hass_client::Client,
     rooms: BTreeMap<&'static str, Room>,
-    pub weather: Mutex<Weather>,
-    pub media_players: Mutex<BTreeMap<&'static str, MediaPlayer>>,
+    weather: Mutex<Weather>,
+    media_players: Mutex<BTreeMap<&'static str, MediaPlayer>>,
+    lights: Mutex<BTreeMap<&'static str, Light>>,
     entity_updates: broadcast::Sender<Arc<str>>,
 }
 
@@ -61,18 +64,26 @@ impl Oracle {
 
         eprintln!("{rooms:#?}");
 
-        let media_players = states
-            .0
-            .iter()
-            .filter_map(|state| {
-                if let StateAttributes::MediaPlayer(attr) = &state.attributes {
-                    let kind = MediaPlayer::new(attr, &hass_client.base);
-                    Some((Intern::<str>::from(state.entity_id.as_ref()).as_ref(), kind))
-                } else {
-                    None
+        let mut media_players = BTreeMap::new();
+        let mut lights = BTreeMap::new();
+
+        for state in &states.0 {
+            match &state.attributes {
+                StateAttributes::MediaPlayer(attr) => {
+                    media_players.insert(
+                        Intern::<str>::from(state.entity_id.as_ref()).as_ref(),
+                        MediaPlayer::new(attr, &hass_client.base),
+                    );
                 }
-            })
-            .collect();
+                StateAttributes::Light(attr) => {
+                    lights.insert(
+                        Intern::<str>::from(state.entity_id.as_ref()).as_ref(),
+                        Light::from(attr.clone()),
+                    );
+                }
+                _ => {}
+            }
+        }
 
         let (entity_updates, _) = broadcast::channel(10);
 
@@ -81,6 +92,7 @@ impl Oracle {
             rooms,
             weather: Mutex::new(Weather::parse_from_states(states)),
             media_players: Mutex::new(media_players),
+            lights: Mutex::new(lights),
             entity_updates: entity_updates.clone(),
         });
 
@@ -178,11 +190,18 @@ fn build_room(
         .find(|v| v.starts_with("media_player."))
         .copied();
 
+    let lights = entities
+        .iter()
+        .filter(|v| v.starts_with("light."))
+        .copied()
+        .collect();
+
     let area = Intern::<str>::from(room.area_id.as_ref()).as_ref();
     let room = Room {
         name: Intern::from(room.name.as_ref()),
         entities,
         speaker_id,
+        lights,
     };
 
     (area, room)
@@ -221,6 +240,43 @@ impl MediaPlayer {
 }
 
 #[derive(Debug, Clone)]
+pub struct Light {
+    pub min_color_temp_kelvin: Option<u16>,
+    pub max_color_temp_kelvin: Option<u16>,
+    pub min_mireds: Option<u16>,
+    pub max_mireds: Option<u16>,
+    pub supported_color_modes: Vec<ColorMode>,
+    pub mode: Option<Box<str>>,
+    pub dynamics: Option<Box<str>>,
+    pub friendly_name: Box<str>,
+    pub color_mode: Option<ColorMode>,
+    pub brightness: Option<f32>,
+    pub color_temp_kelvin: Option<u16>,
+    pub color_temp: Option<u16>,
+    pub xy_color: Option<(f32, f32)>,
+}
+
+impl From<StateLightAttributes<'_>> for Light {
+    fn from(value: StateLightAttributes<'_>) -> Self {
+        Self {
+            min_color_temp_kelvin: value.min_color_temp_kelvin,
+            max_color_temp_kelvin: value.max_color_temp_kelvin,
+            min_mireds: value.min_mireds,
+            max_mireds: value.max_mireds,
+            supported_color_modes: value.supported_color_modes.clone(),
+            mode: value.mode.map(Cow::into_owned).map(Box::from),
+            dynamics: value.dynamics.map(Cow::into_owned).map(Box::from),
+            friendly_name: Box::from(value.friendly_name.as_ref()),
+            color_mode: value.color_mode,
+            brightness: value.brightness,
+            color_temp_kelvin: value.color_temp_kelvin,
+            color_temp: value.color_temp,
+            xy_color: value.xy_color,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct MediaPlayerSpeaker {
     pub volume: f32,
     pub muted: bool,
@@ -243,6 +299,7 @@ pub struct Room {
     pub name: Intern<str>,
     pub entities: Vec<Intern<str>>,
     pub speaker_id: Option<Intern<str>>,
+    pub lights: BTreeSet<Intern<str>>,
 }
 
 impl Room {
@@ -258,6 +315,19 @@ impl Room {
             MediaPlayer::Speaker(v) => Some(v),
             MediaPlayer::Tv(_) => None,
         }
+    }
+
+    pub fn light_names(&self, oracle: &Oracle) -> BTreeMap<&'static str, Box<str>> {
+        let lights = oracle.lights.lock().unwrap();
+
+        self.lights
+            .iter()
+            .filter_map(|v| Some((*v).as_ref()).zip(lights.get(v.as_ref())))
+            .map(|(id, light)| {
+                eprintln!("{light:?}");
+                (id, light.friendly_name.clone())
+            })
+            .collect()
     }
 }
 

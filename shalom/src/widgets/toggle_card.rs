@@ -20,9 +20,9 @@ use crate::{
 
 pub const LONG_PRESS_LENGTH: Duration = Duration::from_millis(350);
 
-pub fn toggle_card<M>(name: &'static str, active: bool) -> ToggleCard<M> {
+pub fn toggle_card<M>(name: &str, active: bool) -> ToggleCard<M> {
     ToggleCard {
-        name,
+        name: Box::from(name),
         active,
         ..ToggleCard::default()
     }
@@ -30,7 +30,7 @@ pub fn toggle_card<M>(name: &'static str, active: bool) -> ToggleCard<M> {
 
 pub struct ToggleCard<M> {
     icon: Option<Icon>,
-    name: &'static str,
+    name: Box<str>,
     height: Length,
     width: Length,
     active: bool,
@@ -42,7 +42,7 @@ impl<M> Default for ToggleCard<M> {
     fn default() -> Self {
         Self {
             icon: None,
-            name: "",
+            name: Box::from(""),
             height: Length::Shrink,
             width: Length::Fill,
             active: false,
@@ -125,7 +125,7 @@ impl<M: Clone> iced::widget::Component<M, Renderer> for ToggleCard<M> {
                 .style(Svg::Custom(Box::new(style)))
         });
 
-        let name = text(self.name).size(14).font(Font {
+        let name = text(&self.name).size(14).font(Font {
             weight: Weight::Bold,
             stretch: Stretch::Condensed,
             ..Font::with_name("Helvetica Neue")

@@ -619,23 +619,23 @@ pub mod responses {
 
     #[derive(Deserialize, Debug, Clone)]
     pub struct StateLightAttributes<'a> {
-        min_color_temp_kelvin: Option<u16>,
-        max_color_temp_kelvin: Option<u16>,
-        min_mireds: Option<u16>,
-        max_mireds: Option<u16>,
+        pub min_color_temp_kelvin: Option<u16>,
+        pub max_color_temp_kelvin: Option<u16>,
+        pub min_mireds: Option<u16>,
+        pub max_mireds: Option<u16>,
         #[serde(default)]
-        supported_color_modes: Vec<ColorMode>,
+        pub supported_color_modes: Vec<ColorMode>,
         #[serde(borrow)]
-        mode: Option<Cow<'a, str>>,
+        pub mode: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        dynamics: Option<Cow<'a, str>>,
+        pub dynamics: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        friendly_name: Cow<'a, str>,
-        color_mode: Option<ColorMode>,
-        brightness: Option<f32>,
-        color_temp_kelvin: Option<u16>,
-        color_temp: Option<u16>,
-        xy_color: Option<(f32, f32)>,
+        pub friendly_name: Cow<'a, str>,
+        pub color_mode: Option<ColorMode>,
+        pub brightness: Option<f32>,
+        pub color_temp_kelvin: Option<u16>,
+        pub color_temp: Option<u16>,
+        pub xy_color: Option<(f32, f32)>,
     }
 
     #[derive(Deserialize, Debug, Clone, Copy)]
