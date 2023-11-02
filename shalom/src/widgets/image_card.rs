@@ -122,15 +122,27 @@ impl<'a, M: Clone> Widget<M, Renderer> for ImageCard<'a, M> {
         layout: Layout<'_>,
         _renderer: &Renderer,
     ) -> Option<iced::advanced::overlay::Element<'b, M, Renderer>> {
-        Some(overlay::Element::new(
-            layout.position(),
-            Box::new(Overlay {
-                text: &mut self.text,
-                tree: &mut state.children[0],
-                size: layout.bounds().size(),
-                on_press: self.on_press.as_ref(),
-            }),
-        ))
+        Some(
+            overlay::Group::with_children(vec![
+                overlay::Element::new(
+                    layout.position(),
+                    Box::new(super::forced_rounded::Overlay {
+                        size: layout.bounds().size(),
+                        position: None,
+                    }),
+                ),
+                overlay::Element::new(
+                    layout.position(),
+                    Box::new(Overlay {
+                        text: &mut self.text,
+                        tree: &mut state.children[0],
+                        size: layout.bounds().size(),
+                        on_press: self.on_press.as_ref(),
+                    }),
+                ),
+            ])
+            .overlay(),
+        )
     }
 }
 

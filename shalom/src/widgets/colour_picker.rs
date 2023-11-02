@@ -7,10 +7,12 @@ use iced::{
     widget::{
         canvas,
         canvas::{Cache, Event, Frame, Geometry, Path, Stroke, Style},
-        component, Column, Component,
+        component, Component, Row,
     },
     Color, Point, Rectangle, Renderer, Size, Theme,
 };
+
+use crate::widgets::forced_rounded::forced_rounded;
 
 pub struct ColourPicker<Event> {
     hue: f32,
@@ -51,23 +53,29 @@ impl<Event> Component<Event, Renderer> for ColourPicker<Event> {
     }
 
     fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let saturation_brightness_picker = canvas(SaturationBrightnessPicker::new(
-            self.hue,
-            self.saturation,
-            self.brightness,
-            Message::OnSaturationBrightnessChange,
-        ))
-        .height(192)
-        .width(192);
+        let saturation_brightness_picker = forced_rounded(
+            canvas(SaturationBrightnessPicker::new(
+                self.hue,
+                self.saturation,
+                self.brightness,
+                Message::OnSaturationBrightnessChange,
+            ))
+            .height(192)
+            .width(192)
+            .into(),
+        );
 
-        let hue_slider = canvas(HueSlider::new(self.hue, Message::OnHueChanged))
-            .height(24)
-            .width(192);
+        let hue_slider = forced_rounded(
+            canvas(HueSlider::new(self.hue, Message::OnHueChanged))
+                .height(192)
+                .width(32)
+                .into(),
+        );
 
-        Column::new()
+        Row::new()
             .push(saturation_brightness_picker)
             .push(hue_slider)
-            .spacing(4)
+            .spacing(0)
             .into()
     }
 }
@@ -134,7 +142,7 @@ impl<Message> canvas::Program<Message> for HueSlider<Message> {
             if let Some(position) = cursor.position_in(bounds) {
                 state.arrow_cache.clear();
 
-                let hue = (position.x / bounds.width) * 360.;
+                let hue = (position.y / bounds.height) * 360.;
                 (Status::Captured, Some((self.on_hue_change)(hue)))
             } else {
                 (Status::Captured, None)
@@ -163,12 +171,12 @@ impl<Message> canvas::Program<Message> for HueSlider<Message> {
                     clippy::cast_sign_loss,
                     clippy::cast_precision_loss
                 )]
-                for x in 0..size.width as u32 {
-                    let hue = (x as f32 / size.width) * 360.0;
+                for y in 0..size.height as u32 {
+                    let hue = (y as f32 / size.height) * 360.0;
                     let color = colour_from_hsb(hue, 1.0, 1.0);
                     frame.fill_rectangle(
-                        Point::new(x as f32, 0.0),
-                        Size::new(1.0, size.height),
+                        Point::new(0.0, y as f32),
+                        Size::new(size.width, 1.0),
                         color,
                     );
                 }
@@ -182,15 +190,15 @@ impl<Message> canvas::Program<Message> for HueSlider<Message> {
 
                 let arrow_width = 10.0;
                 let arrow_height = 10.0;
-                let arrow_x = (self.hue / 360.0) * size.width - (arrow_width / 2.0);
-                let arrow_y = size.height - arrow_height;
+                let arrow_x = size.width;
+                let arrow_y = (self.hue / 360.0) * size.height - (arrow_height / 2.0);
 
                 let arrow = Path::new(|p| {
                     p.move_to(Point::new(arrow_x, arrow_y));
-                    p.line_to(Point::new(arrow_x + arrow_width, arrow_y));
+                    p.line_to(Point::new(arrow_x, arrow_y - arrow_width));
                     p.line_to(Point::new(
-                        arrow_x + (arrow_width / 2.0),
-                        arrow_y + arrow_height,
+                        arrow_x - arrow_height,
+                        arrow_y - (arrow_width / 2.0),
                     ));
                     p.line_to(Point::new(arrow_x, arrow_y));
                     p.close();
