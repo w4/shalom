@@ -9,6 +9,7 @@ use iced::{
     Font, Renderer, Subscription,
 };
 use itertools::Itertools;
+use time::OffsetDateTime;
 
 use crate::{
     oracle::{Oracle, Weather},
@@ -48,7 +49,14 @@ impl Omni {
     }
 
     pub fn view(&self) -> Element<'_, Message, Renderer> {
-        let greeting = text("Good Evening").size(60).font(Font {
+        let greeting = match OffsetDateTime::now_utc().hour() {
+            5..=11 => "Good morning!",
+            12..=16 => "Good afternoon!",
+            17..=23 | 0..=4 => "Good evening!",
+            _ => "Hello!",
+        };
+
+        let greeting = text(greeting).size(60).font(Font {
             weight: Weight::Bold,
             stretch: Stretch::Condensed,
             ..Font::with_name("Helvetica Neue")

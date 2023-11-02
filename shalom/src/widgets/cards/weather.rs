@@ -14,6 +14,7 @@ use iced::{
     Alignment, Background, Color, Degrees, Element, Font, Gradient, Length, Rectangle, Renderer,
     Size, Theme,
 };
+use time::OffsetDateTime;
 
 use crate::oracle::Weather;
 
@@ -21,7 +22,6 @@ use crate::oracle::Weather;
 pub struct WeatherCard<M> {
     pub on_click: Option<M>,
     pub current_weather: Weather,
-    pub day_time: bool,
 }
 
 impl<M> WeatherCard<M> {
@@ -29,7 +29,6 @@ impl<M> WeatherCard<M> {
         Self {
             current_weather,
             on_click: None,
-            day_time: true,
         }
     }
 
@@ -111,7 +110,13 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
         _cursor: Cursor,
         _viewport: &Rectangle,
     ) {
-        let gradient = if self.day_time {
+        // TODO: get sunrise/sunset from somewhere reasonable
+        let day_time = match OffsetDateTime::now_utc().hour() {
+            5..=19 => true,
+            _ => false,
+        };
+
+        let gradient = if day_time {
             Linear::new(Degrees(90.))
                 .add_stop(0.0, Color::from_rgba8(104, 146, 190, 1.0))
                 .add_stop(1.0, Color::from_rgba8(10, 54, 120, 1.0))
@@ -149,7 +154,7 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
         });
 
         let icon_bounds = children.next().unwrap().bounds();
-        if let Some(icon) = self.current_weather.condition.icon(self.day_time) {
+        if let Some(icon) = self.current_weather.condition.icon(day_time) {
             renderer.draw(icon.handle(), None, icon_bounds);
         }
 
