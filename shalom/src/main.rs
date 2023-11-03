@@ -205,6 +205,14 @@ impl Application for Shalom {
                         Message::UpdateLightResult,
                     )
                 }
+                Some(pages::room::Event::SetSpeakerShuffle(id, new)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).set_shuffle(new).await },
+                        Message::UpdateLightResult,
+                    )
+                }
                 None => Command::none(),
             },
             (Message::LightControlMenu(e), _, Some(ActiveContextMenu::LightControl(menu))) => {

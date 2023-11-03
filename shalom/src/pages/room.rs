@@ -118,6 +118,9 @@ impl Room {
             Message::OnSpeakerPreviousTrack => {
                 Some(Event::SpeakerPreviousTrack(self.speaker.as_ref()?.0))
             }
+            Message::OnSpeakerShuffleChange(new) => {
+                Some(Event::SetSpeakerShuffle(self.speaker.as_ref()?.0, new))
+            }
         }
     }
 
@@ -163,7 +166,8 @@ impl Room {
                         .on_state_change(Message::OnSpeakerStateChange)
                         .on_position_change(Message::OnSpeakerPositionChange)
                         .on_next_track(Message::OnSpeakerNextTrack)
-                        .on_previous_track(Message::OnSpeakerPreviousTrack),
+                        .on_previous_track(Message::OnSpeakerPreviousTrack)
+                        .on_shuffle_change(Message::OnSpeakerShuffleChange),
                 )
                 .padding([12, 0, 24, 0]),
             );
@@ -230,6 +234,7 @@ pub enum Event {
     SetSpeakerPosition(&'static str, Duration),
     SetSpeakerPlaying(&'static str, bool),
     SetSpeakerMuted(&'static str, bool),
+    SetSpeakerShuffle(&'static str, bool),
     SetSpeakerRepeat(&'static str, MediaPlayerRepeat),
     SpeakerNextTrack(&'static str),
     SpeakerPreviousTrack(&'static str),
@@ -246,6 +251,7 @@ pub enum Message {
     OnSpeakerPositionChange(Duration),
     OnSpeakerStateChange(bool),
     OnSpeakerMuteChange(bool),
+    OnSpeakerShuffleChange(bool),
     OnSpeakerRepeatChange(MediaPlayerRepeat),
     OnSpeakerNextTrack,
     OnSpeakerPreviousTrack,

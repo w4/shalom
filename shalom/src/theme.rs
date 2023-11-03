@@ -56,6 +56,7 @@ pub enum Icon {
     Snow,
     ClearDay,
     Wind,
+    Shuffle,
 }
 
 impl Icon {
@@ -93,6 +94,7 @@ impl Icon {
             Self::Snow => image!("snow"),
             Self::ClearDay => image!("clear-day"),
             Self::Wind => image!("wind"),
+            Self::Shuffle => image!("shuffle"),
         }
     }
 }

@@ -35,6 +35,7 @@ pub fn media_player<M>(device: MediaPlayerSpeaker, image: Option<Handle>) -> Med
         on_repeat_change: None,
         on_next_track: None,
         on_previous_track: None,
+        on_shuffle_change: None,
     }
 }
 
@@ -51,6 +52,7 @@ pub struct MediaPlayer<M> {
     on_repeat_change: Option<fn(MediaPlayerRepeat) -> M>,
     on_next_track: Option<M>,
     on_previous_track: Option<M>,
+    on_shuffle_change: Option<fn(bool) -> M>,
 }
 
 impl<M> MediaPlayer<M> {
@@ -86,6 +88,11 @@ impl<M> MediaPlayer<M> {
 
     pub fn on_previous_track(mut self, msg: M) -> Self {
         self.on_previous_track = Some(msg);
+        self
+    }
+
+    pub fn on_shuffle_change(mut self, f: fn(bool) -> M) -> Self {
+        self.on_shuffle_change = Some(f);
         self
     }
 }
@@ -131,6 +138,7 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                 }
             }
             Event::NextTrack => self.on_next_track.clone(),
+            Event::ToggleShuffle => self.on_shuffle_change.map(|f| f(!self.device.shuffle)),
         }
     }
 
@@ -171,6 +179,13 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                     // .align_y(Vertical::Center)
                     // .width(Length::Fill),
                     row![
+                        mouse_area(
+                            svg(Icon::Shuffle)
+                                .height(24)
+                                .width(24)
+                                .style(icon_style(self.device.shuffle)),
+                        )
+                        .on_press(Event::ToggleShuffle),
                         mouse_area(
                             svg(Icon::Backward)
                                 .height(24)
@@ -270,6 +285,7 @@ pub enum Event {
     TogglePlaying,
     ToggleMute,
     ToggleRepeat,
+    ToggleShuffle,
     VolumeChange(f32),
     PositionChange(f64),
     OnVolumeRelease,
