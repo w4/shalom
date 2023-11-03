@@ -29,6 +29,37 @@ pub struct Shalom {
     page: ActivePage,
     context_menu: Option<ActiveContextMenu>,
     oracle: Option<Arc<Oracle>>,
+    home_room: Option<&'static str>,
+}
+
+impl Shalom {
+    fn is_on_home_page(&self) -> bool {
+        match (&self.page, self.home_room) {
+            (ActivePage::Omni(_), None) => true,
+            (ActivePage::Room(r), Some(id)) if r.room_id() == id => true,
+            _ => false,
+        }
+    }
+
+    fn build_home_route(&self) -> ActivePage {
+        self.home_room.map_or_else(
+            || self.build_omni_route(),
+            |room| self.build_room_route(room),
+        )
+    }
+
+    fn build_room_route(&self, room: &'static str) -> ActivePage {
+        ActivePage::Room(pages::room::Room::new(
+            room,
+            self.oracle.as_ref().unwrap().clone(),
+        ))
+    }
+
+    fn build_omni_route(&self) -> ActivePage {
+        ActivePage::Omni(pages::omni::Omni::new(
+            self.oracle.as_ref().unwrap().clone(),
+        ))
+    }
 }
 
 impl Application for Shalom {
@@ -42,6 +73,7 @@ impl Application for Shalom {
             page: ActivePage::Loading,
             context_menu: None,
             oracle: None,
+            home_room: Some("living_room"),
         };
 
         // this is only best-effort to try and prevent blocking when loading
@@ -64,15 +96,13 @@ impl Application for Shalom {
         String::from("Shalom")
     }
 
+    #[allow(clippy::too_many_lines)]
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         #[allow(clippy::single_match)]
         match (message, &mut self.page, &mut self.context_menu) {
             (Message::Loaded(oracle), _, _) => {
                 self.oracle = Some(oracle);
-                self.page = ActivePage::Room(pages::room::Room::new(
-                    "living_room",
-                    self.oracle.clone().unwrap(),
-                ));
+                self.page = self.build_home_route();
                 Command::none()
             }
             (Message::CloseContextMenu, _, _) => {
@@ -80,15 +110,16 @@ impl Application for Shalom {
                 Command::none()
             }
             (Message::OpenOmniPage, _, _) => {
-                self.page = ActivePage::Omni(pages::omni::Omni::new(self.oracle.clone().unwrap()));
+                self.page = self.build_omni_route();
+                Command::none()
+            }
+            (Message::OpenHomePage, _, _) => {
+                self.page = self.build_home_route();
                 Command::none()
             }
             (Message::OmniEvent(e), ActivePage::Omni(r), _) => match r.update(e) {
                 Some(pages::omni::Event::OpenRoom(room)) => {
-                    self.page = ActivePage::Room(pages::room::Room::new(
-                        room,
-                        self.oracle.clone().unwrap(),
-                    ));
+                    self.page = self.build_room_route(room);
                     Command::none()
                 }
                 None => Command::none(),
@@ -108,6 +139,69 @@ impl Application for Shalom {
 
                     Command::perform(
                         async move { oracle.set_light_state(id, state).await },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SetSpeakerVolume(id, new)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).set_volume(new).await },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SetSpeakerPosition(id, new)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).seek(new).await },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SetSpeakerPlaying(id, new)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move {
+                            let speaker = oracle.speaker(id);
+                            if new {
+                                speaker.play().await;
+                            } else {
+                                speaker.pause().await;
+                            }
+                        },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SetSpeakerMuted(id, new)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).set_mute(new).await },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SetSpeakerRepeat(id, new)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).set_repeat(new).await },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SpeakerNextTrack(id)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).next().await },
+                        Message::UpdateLightResult,
+                    )
+                }
+                Some(pages::room::Event::SpeakerPreviousTrack(id)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.speaker(id).previous().await },
                         Message::UpdateLightResult,
                     )
                 }
@@ -145,7 +239,7 @@ impl Application for Shalom {
         let mut content = Column::new().push(scrollable(page_content));
 
         let (show_back, show_home) = match &self.page {
-            // _ if self.page == self.homepage => (true, false),
+            _ if self.is_on_home_page() => (true, false),
             ActivePage::Loading => (false, false),
             ActivePage::Omni(_) => (false, true),
             ActivePage::Room(_) => (true, true),
@@ -163,8 +257,8 @@ impl Application for Shalom {
                 .height(32)
                 .width(32)
                 .content_fit(ContentFit::None),
-        );
-        // .on_press(Message::ChangePage(self.homepage.clone()));
+        )
+        .on_press(Message::OpenHomePage);
 
         let navigation = match (show_back, show_home) {
             (true, true) => Some(Element::from(
@@ -228,6 +322,7 @@ pub enum Message {
     Loaded(Arc<Oracle>),
     CloseContextMenu,
     OpenOmniPage,
+    OpenHomePage,
     OmniEvent(pages::omni::Message),
     RoomEvent(pages::room::Message),
     LightControlMenu(context_menus::light_control::Message),

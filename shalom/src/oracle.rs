@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
     sync::{Arc, Mutex},
     time::Duration,
@@ -9,9 +9,14 @@ use std::{
 use iced::futures::{future, Stream, StreamExt};
 use internment::Intern;
 use itertools::Itertools;
-use tokio::sync::{broadcast, broadcast::error::RecvError};
+use time::OffsetDateTime;
+use tokio::{
+    sync::{broadcast, broadcast::error::RecvError},
+    time::MissedTickBehavior,
+};
 use tokio_stream::wrappers::BroadcastStream;
 use url::Url;
+use yoke::Yoke;
 
 use crate::{
     hass_client::{
@@ -20,8 +25,11 @@ use crate::{
             StateAttributes, StateLightAttributes, StateMediaPlayerAttributes,
             StateWeatherAttributes, StatesList, WeatherCondition,
         },
-        CallServiceRequestData, CallServiceRequestLight, CallServiceRequestLightTurnOn, Event,
-        HassRequestKind,
+        CallServiceRequestData, CallServiceRequestLight, CallServiceRequestLightTurnOn,
+        CallServiceRequestMediaPlayer, CallServiceRequestMediaPlayerMediaSeek,
+        CallServiceRequestMediaPlayerRepeatSet, CallServiceRequestMediaPlayerShuffleSet,
+        CallServiceRequestMediaPlayerVolumeMute, CallServiceRequestMediaPlayerVolumeSet, Event,
+        HassRequestKind, MediaPlayerRepeat,
     },
     widgets::colour_picker::clamp_to_u8,
 };
@@ -76,7 +84,7 @@ impl Oracle {
                 StateAttributes::MediaPlayer(attr) => {
                     media_players.insert(
                         Intern::<str>::from(state.entity_id.as_ref()).as_ref(),
-                        MediaPlayer::new(attr, &hass_client.base),
+                        MediaPlayer::new(attr, &state.state, &hass_client.base),
                     );
                 }
                 StateAttributes::Light(attr) => {
@@ -135,6 +143,13 @@ impl Oracle {
         self.lights.lock().unwrap().get(entity_id).cloned()
     }
 
+    pub fn speaker(&self, speaker_id: &'static str) -> EloquentSpeaker<'_> {
+        EloquentSpeaker {
+            speaker_id,
+            oracle: self,
+        }
+    }
+
     pub async fn set_light_state(&self, entity_id: &'static str, on: bool) {
         let _res = self
             .client
@@ -176,51 +191,251 @@ impl Oracle {
     pub fn spawn_worker(self: Arc<Self>) {
         tokio::spawn(async move {
             let mut recv = self.client.subscribe();
+            let mut second_tick = tokio::time::interval(Duration::from_secs(1));
+            second_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+            let mut active_media_players = self
+                .media_players
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_k, v)| v.is_playing())
+                .map(|(k, _v)| *k)
+                .collect::<HashSet<_>>();
 
             loop {
-                let msg = match recv.recv().await {
-                    Ok(msg) => msg,
-                    Err(RecvError::Lagged(_)) => continue,
-                    Err(RecvError::Closed) => break,
-                };
-
-                match msg.get() {
-                    Event::StateChanged(state_changed) => {
-                        match &state_changed.new_state.attributes {
-                            StateAttributes::MediaPlayer(attrs) => {
-                                self.media_players.lock().unwrap().insert(
-                                    Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
-                                    MediaPlayer::new(attrs, &self.client.base),
-                                );
-                            }
-                            StateAttributes::Weather(attrs) => {
-                                *self.weather.lock().unwrap() =
-                                    Weather::parse_from_state_and_attributes(
-                                        state_changed.new_state.state.as_ref(),
-                                        attrs,
-                                    );
-                            }
-                            StateAttributes::Light(attrs) => {
-                                self.lights.lock().unwrap().insert(
-                                    Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
-                                    Light::from((
-                                        attrs.clone(),
-                                        state_changed.new_state.state.as_ref(),
-                                    )),
-                                );
-                            }
-                            _ => {
-                                // TODO
-                            }
-                        }
-
-                        let _res = self
-                            .entity_updates
-                            .send(Arc::from(state_changed.entity_id.as_ref()));
-                    }
+                tokio::select! {
+                    msg = recv.recv() => match msg {
+                        Ok(msg) => self.handle_state_update_event(&msg, &mut active_media_players),
+                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Closed) => break,
+                    },
+                    _ = second_tick.tick(), if !active_media_players.is_empty() => {
+                        self.update_media_player_positions(&active_media_players);
+                    },
                 }
             }
         });
+    }
+
+    fn update_media_player_positions(&self, active_media_players: &HashSet<&'static str>) {
+        let mut media_players = self.media_players.lock().unwrap();
+
+        for entity_id in active_media_players {
+            let Some(MediaPlayer::Speaker(speaker)) = media_players.get_mut(entity_id) else {
+                continue;
+            };
+
+            speaker.actual_media_position = speaker
+                .media_position
+                .zip(speaker.media_position_updated_at)
+                .map(calculate_actual_media_position);
+
+            let _res = self.entity_updates.send(Arc::from(*entity_id));
+        }
+    }
+
+    fn handle_state_update_event(
+        &self,
+        msg: &Yoke<Event<'static>, String>,
+        active_media_players: &mut HashSet<&'static str>,
+    ) {
+        match msg.get() {
+            Event::StateChanged(state_changed) => {
+                match &state_changed.new_state.attributes {
+                    StateAttributes::MediaPlayer(attrs) => {
+                        let entity_id =
+                            Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref();
+                        let new_state = MediaPlayer::new(
+                            attrs,
+                            &state_changed.new_state.state,
+                            &self.client.base,
+                        );
+
+                        if new_state.is_playing() {
+                            active_media_players.insert(entity_id);
+                        } else {
+                            active_media_players.remove(entity_id);
+                        }
+
+                        self.media_players
+                            .lock()
+                            .unwrap()
+                            .insert(entity_id, new_state);
+                    }
+                    StateAttributes::Weather(attrs) => {
+                        *self.weather.lock().unwrap() = Weather::parse_from_state_and_attributes(
+                            state_changed.new_state.state.as_ref(),
+                            attrs,
+                        );
+                    }
+                    StateAttributes::Light(attrs) => {
+                        self.lights.lock().unwrap().insert(
+                            Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
+                            Light::from((attrs.clone(), state_changed.new_state.state.as_ref())),
+                        );
+                    }
+                    _ => {
+                        // TODO
+                    }
+                }
+
+                let _res = self
+                    .entity_updates
+                    .send(Arc::from(state_changed.entity_id.as_ref()));
+            }
+        }
+    }
+}
+
+/// Eloquent interface for interacting with a speaker. Does not hold any state
+/// of its own.
+pub struct EloquentSpeaker<'a> {
+    oracle: &'a Oracle,
+    speaker_id: &'static str,
+}
+
+impl EloquentSpeaker<'_> {
+    async fn call(&self, msg: CallServiceRequestMediaPlayer) {
+        let _res = self
+            .oracle
+            .client
+            .call_service(self.speaker_id, CallServiceRequestData::MediaPlayer(msg))
+            .await;
+    }
+
+    pub async fn set_mute(&self, is_volume_muted: bool) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.muted = true;
+        }
+
+        self.call(CallServiceRequestMediaPlayer::VolumeMute(
+            CallServiceRequestMediaPlayerVolumeMute { is_volume_muted },
+        ))
+        .await;
+    }
+
+    pub async fn set_volume(&self, volume_level: f32) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.volume = volume_level;
+        }
+
+        self.call(CallServiceRequestMediaPlayer::VolumeSet(
+            CallServiceRequestMediaPlayerVolumeSet { volume_level },
+        ))
+        .await;
+    }
+
+    pub async fn seek(&self, position: Duration) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.media_position = Some(position);
+            speaker.actual_media_position = Some(position);
+            speaker.media_position_updated_at = Some(OffsetDateTime::now_utc());
+        }
+
+        self.call(CallServiceRequestMediaPlayer::MediaSeek(
+            CallServiceRequestMediaPlayerMediaSeek {
+                seek_position: position,
+            },
+        ))
+        .await;
+    }
+
+    pub async fn set_shuffle(&self, shuffle: bool) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.shuffle = shuffle;
+        }
+
+        self.call(CallServiceRequestMediaPlayer::ShuffleSet(
+            CallServiceRequestMediaPlayerShuffleSet { shuffle },
+        ))
+        .await;
+    }
+
+    pub async fn set_repeat(&self, repeat: MediaPlayerRepeat) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.repeat = repeat;
+        }
+
+        self.call(CallServiceRequestMediaPlayer::RepeatSet(
+            CallServiceRequestMediaPlayerRepeatSet { repeat },
+        ))
+        .await;
+    }
+
+    pub async fn play(&self) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.state = MediaPlayerSpeakerState::Playing;
+        }
+
+        self.call(CallServiceRequestMediaPlayer::MediaPlay).await;
+    }
+
+    pub async fn pause(&self) {
+        if let MediaPlayer::Speaker(speaker) = self
+            .oracle
+            .media_players
+            .lock()
+            .unwrap()
+            .get_mut(self.speaker_id)
+            .unwrap()
+        {
+            speaker.state = MediaPlayerSpeakerState::Paused;
+        }
+
+        self.call(CallServiceRequestMediaPlayer::MediaPause).await;
+    }
+
+    pub async fn next(&self) {
+        self.call(CallServiceRequestMediaPlayer::MediaNextTrack)
+            .await;
+    }
+
+    pub async fn previous(&self) {
+        self.call(CallServiceRequestMediaPlayer::MediaPreviousTrack)
+            .await;
     }
 }
 
@@ -270,19 +485,54 @@ pub enum MediaPlayer {
 }
 
 impl MediaPlayer {
-    fn new(attr: &StateMediaPlayerAttributes, base: &Url) -> Self {
+    pub fn is_playing(&self) -> bool {
+        if let MediaPlayer::Speaker(speaker) = self {
+            speaker.state == MediaPlayerSpeakerState::Playing
+        } else {
+            false
+        }
+    }
+}
+
+impl MediaPlayer {
+    fn new(attr: &StateMediaPlayerAttributes, state: &str, base: &Url) -> Self {
+        let state = match state {
+            "playing" => MediaPlayerSpeakerState::Playing,
+            "paused" => MediaPlayerSpeakerState::Paused,
+            "idle" => MediaPlayerSpeakerState::Idle,
+            "unavailable" => MediaPlayerSpeakerState::Unavailable,
+            "off" => MediaPlayerSpeakerState::Off,
+            v => panic!("unknown speaker state: {v}"),
+        };
+
+        let repeat = match attr.repeat.as_deref() {
+            None | Some("off") => MediaPlayerRepeat::Off,
+            Some("all") => MediaPlayerRepeat::All,
+            Some("one") => MediaPlayerRepeat::One,
+            v => panic!("unknown speaker repeat: {v:?}"),
+        };
+
         if attr.volume_level.is_some() {
+            let actual_media_position = attr
+                .media_position
+                .map(Duration::from_secs)
+                .zip(attr.media_position_updated_at)
+                .map(calculate_actual_media_position);
+
             MediaPlayer::Speaker(MediaPlayerSpeaker {
+                state,
                 volume: attr.volume_level.unwrap(),
                 muted: attr.is_volume_muted.unwrap(),
                 source: Box::from(attr.source.as_deref().unwrap_or("")),
+                actual_media_position,
                 media_duration: attr.media_duration.map(Duration::from_secs),
                 media_position: attr.media_position.map(Duration::from_secs),
+                media_position_updated_at: attr.media_position_updated_at,
                 media_title: attr.media_title.as_deref().map(Box::from),
                 media_artist: attr.media_artist.as_deref().map(Box::from),
                 media_album_name: attr.media_album_name.as_deref().map(Box::from),
                 shuffle: attr.shuffle.unwrap_or(false),
-                repeat: Box::from(attr.repeat.as_deref().unwrap_or("")),
+                repeat,
                 entity_picture: attr
                     .entity_picture
                     .as_deref()
@@ -342,17 +592,44 @@ impl From<(StateLightAttributes<'_>, &str)> for Light {
 
 #[derive(Debug, Clone)]
 pub struct MediaPlayerSpeaker {
+    pub state: MediaPlayerSpeakerState,
     pub volume: f32,
     pub muted: bool,
     pub source: Box<str>,
     pub media_duration: Option<Duration>,
     pub media_position: Option<Duration>,
+    pub media_position_updated_at: Option<time::OffsetDateTime>,
+    pub actual_media_position: Option<Duration>,
     pub media_title: Option<Box<str>>,
     pub media_artist: Option<Box<str>>,
     pub media_album_name: Option<Box<str>>,
     pub shuffle: bool,
-    pub repeat: Box<str>,
+    pub repeat: MediaPlayerRepeat,
     pub entity_picture: Option<Url>,
+}
+
+fn calculate_actual_media_position(
+    (position, updated_at): (Duration, time::OffsetDateTime),
+) -> Duration {
+    let now = time::OffsetDateTime::now_utc();
+    let since_update = now - updated_at;
+
+    (position + since_update).unsigned_abs()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaPlayerSpeakerState {
+    Playing,
+    Unavailable,
+    Off,
+    Idle,
+    Paused,
+}
+
+impl MediaPlayerSpeakerState {
+    pub fn is_playing(self) -> bool {
+        matches!(self, MediaPlayerSpeakerState::Playing)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -367,7 +644,7 @@ pub struct Room {
 }
 
 impl Room {
-    pub fn speaker(&self, oracle: &Oracle) -> Option<MediaPlayerSpeaker> {
+    pub fn speaker(&self, oracle: &Oracle) -> Option<(&'static str, MediaPlayerSpeaker)> {
         match self.speaker_id.and_then(|v| {
             oracle
                 .media_players
@@ -375,9 +652,10 @@ impl Room {
                 .unwrap()
                 .get(v.as_ref())
                 .cloned()
+                .zip(Some(v))
         })? {
-            MediaPlayer::Speaker(v) => Some(v),
-            MediaPlayer::Tv(_) => None,
+            (MediaPlayer::Speaker(v), id) => Some((id.as_ref(), v)),
+            (MediaPlayer::Tv(_), _) => None,
         }
     }
 

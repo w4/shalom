@@ -1,4 +1,7 @@
-use std::{fmt::Display, time::Duration};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 
 use iced::{
     advanced::graphics::core::Element,
@@ -10,7 +13,8 @@ use iced::{
 };
 
 use crate::{
-    oracle::MediaPlayerSpeaker,
+    hass_client::MediaPlayerRepeat,
+    oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState},
     theme::{
         colours::{SKY_500, SLATE_400, SLATE_600},
         Icon,
@@ -24,7 +28,13 @@ pub fn media_player<M>(device: MediaPlayerSpeaker, image: Option<Handle>) -> Med
         width: Length::Fill,
         device,
         image,
-        _on_something: None,
+        on_volume_change: None,
+        on_position_change: None,
+        on_state_change: None,
+        on_mute_change: None,
+        on_repeat_change: None,
+        on_next_track: None,
+        on_previous_track: None,
     }
 }
 
@@ -34,40 +44,106 @@ pub struct MediaPlayer<M> {
     width: Length,
     device: MediaPlayerSpeaker,
     image: Option<Handle>,
-    _on_something: Option<M>,
+    on_volume_change: Option<fn(f32) -> M>,
+    on_position_change: Option<fn(Duration) -> M>,
+    on_state_change: Option<fn(bool) -> M>,
+    on_mute_change: Option<fn(bool) -> M>,
+    on_repeat_change: Option<fn(MediaPlayerRepeat) -> M>,
+    on_next_track: Option<M>,
+    on_previous_track: Option<M>,
 }
 
-impl<M> Component<M, Renderer> for MediaPlayer<M> {
+impl<M> MediaPlayer<M> {
+    pub fn on_volume_change(mut self, f: fn(f32) -> M) -> Self {
+        self.on_volume_change = Some(f);
+        self
+    }
+
+    pub fn on_position_change(mut self, f: fn(Duration) -> M) -> Self {
+        self.on_position_change = Some(f);
+        self
+    }
+
+    pub fn on_state_change(mut self, f: fn(bool) -> M) -> Self {
+        self.on_state_change = Some(f);
+        self
+    }
+
+    pub fn on_mute_change(mut self, f: fn(bool) -> M) -> Self {
+        self.on_mute_change = Some(f);
+        self
+    }
+
+    pub fn on_repeat_change(mut self, f: fn(MediaPlayerRepeat) -> M) -> Self {
+        self.on_repeat_change = Some(f);
+        self
+    }
+
+    pub fn on_next_track(mut self, msg: M) -> Self {
+        self.on_next_track = Some(msg);
+        self
+    }
+
+    pub fn on_previous_track(mut self, msg: M) -> Self {
+        self.on_previous_track = Some(msg);
+        self
+    }
+}
+
+impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
     type State = State;
     type Event = Event;
 
     fn update(&mut self, state: &mut Self::State, event: Self::Event) -> Option<M> {
         match event {
             Event::VolumeChange(new) => {
-                state.volume = new;
+                state.overridden_volume = Some(new);
                 None
             }
             Event::PositionChange(new) => {
-                state.track_position = Duration::from_secs_f64(new);
+                state.overridden_position = Some(Duration::from_secs_f64(new));
                 None
             }
-            Event::TogglePlaying => {
-                state.playing = !state.playing;
-                None
+            Event::TogglePlaying => self
+                .on_state_change
+                .map(|f| f(!self.device.state.is_playing())),
+            Event::ToggleMute => self.on_mute_change.map(|f| f(!self.device.muted)),
+            Event::ToggleRepeat => self.on_repeat_change.map(|f| f(self.device.repeat.next())),
+            Event::OnVolumeRelease => self
+                .on_volume_change
+                .zip(state.overridden_volume.take())
+                .map(|(f, vol)| f(vol)),
+            Event::OnPositionRelease => self
+                .on_position_change
+                .zip(state.overridden_position.take())
+                .map(|(f, pos)| f(pos)),
+            Event::PreviousTrack => {
+                let last_press = state
+                    .last_previous_click
+                    .as_ref()
+                    .map_or(Duration::MAX, Instant::elapsed);
+                state.last_previous_click = Some(Instant::now());
+
+                if last_press > Duration::from_secs(2) {
+                    self.on_position_change.map(|f| f(Duration::ZERO))
+                } else {
+                    self.on_previous_track.clone()
+                }
             }
-            Event::ToggleMute => {
-                state.muted = !state.muted;
-                None
-            }
-            Event::ToggleRepeat => {
-                state.repeat = !state.repeat;
-                None
-            }
+            Event::NextTrack => self.on_next_track.clone(),
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn view(&self, state: &Self::State) -> Element<'_, Self::Event, Renderer> {
         let icon_style = |v| Svg::Custom(Box::new(if v { Style::Active } else { Style::Inactive }));
+
+        let position = state
+            .overridden_position
+            .or(self.device.actual_media_position)
+            .unwrap_or_default();
+
+        let volume = state.overridden_volume.unwrap_or(self.device.volume);
 
         container(
             row![
@@ -95,12 +171,15 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
                     // .align_y(Vertical::Center)
                     // .width(Length::Fill),
                     row![
-                        svg(Icon::Backward)
-                            .height(24)
-                            .width(24)
-                            .style(icon_style(false)),
                         mouse_area(
-                            svg(if state.playing {
+                            svg(Icon::Backward)
+                                .height(24)
+                                .width(24)
+                                .style(icon_style(false))
+                        )
+                        .on_press(Event::PreviousTrack),
+                        mouse_area(
+                            svg(if self.device.state == MediaPlayerSpeakerState::Playing {
                                 Icon::Pause
                             } else {
                                 Icon::Play
@@ -110,28 +189,32 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
                             .style(icon_style(false))
                         )
                         .on_press(Event::TogglePlaying),
-                        svg(Icon::Forward)
-                            .height(24)
-                            .width(24)
-                            .style(icon_style(false)),
+                        mouse_area(
+                            svg(Icon::Forward)
+                                .height(24)
+                                .width(24)
+                                .style(icon_style(false))
+                        )
+                        .on_press(Event::NextTrack),
                         mouse_area(
                             svg(Icon::Repeat)
                                 .height(24)
                                 .width(24)
-                                .style(icon_style(state.repeat)),
+                                .style(icon_style(self.device.repeat != MediaPlayerRepeat::Off)),
                         )
                         .on_press(Event::ToggleRepeat),
                     ]
                     .spacing(14),
                     row![
-                        text(format_time(state.track_position))
+                        text(format_time(position))
                             .style(Text::Color(SLATE_400))
                             .size(12),
                         slider(
                             0.0..=self.device.media_duration.unwrap_or_default().as_secs_f64(),
-                            state.track_position.as_secs_f64(),
+                            position.as_secs_f64(),
                             Event::PositionChange
-                        ),
+                        )
+                        .on_release(Event::OnPositionRelease),
                         text(format_time(self.device.media_duration.unwrap_or_default()))
                             .style(Text::Color(SLATE_400))
                             .size(12),
@@ -144,7 +227,7 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
                 .width(Length::FillPortion(12)),
                 row![
                     mouse_area(
-                        svg(if state.muted {
+                        svg(if self.device.muted {
                             Icon::SpeakerMuted
                         } else {
                             Icon::Speaker
@@ -154,7 +237,10 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
                         .style(icon_style(false)),
                     )
                     .on_press(Event::ToggleMute),
-                    slider(0..=100, state.volume, Event::VolumeChange).width(128),
+                    slider(0.0..=1.0, volume, Event::VolumeChange)
+                        .width(128)
+                        .step(0.01)
+                        .on_release(Event::OnVolumeRelease),
                 ]
                 .align_items(Alignment::Center)
                 .width(Length::FillPortion(4))
@@ -172,13 +258,11 @@ impl<M> Component<M, Renderer> for MediaPlayer<M> {
     }
 }
 
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct State {
-    muted: bool,
-    volume: u8,
-    track_position: Duration,
-    playing: bool,
-    repeat: bool,
+    overridden_position: Option<Duration>,
+    overridden_volume: Option<f32>,
+    last_previous_click: Option<Instant>,
 }
 
 #[derive(Clone)]
@@ -186,8 +270,12 @@ pub enum Event {
     TogglePlaying,
     ToggleMute,
     ToggleRepeat,
-    VolumeChange(u8),
+    VolumeChange(f32),
     PositionChange(f64),
+    OnVolumeRelease,
+    OnPositionRelease,
+    PreviousTrack,
+    NextTrack,
 }
 
 impl<'a, M> From<MediaPlayer<M>> for Element<'a, M, Renderer>

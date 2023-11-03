@@ -5,6 +5,7 @@ use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
 use iced::futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
+use serde_with::serde_as;
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
@@ -266,6 +267,7 @@ pub struct CallServiceRequestTarget {
 #[serde(rename_all = "snake_case", tag = "domain")]
 pub enum CallServiceRequestData {
     Light(CallServiceRequestLight),
+    MediaPlayer(CallServiceRequestMediaPlayer),
 }
 
 #[derive(Serialize)]
@@ -281,6 +283,65 @@ pub struct CallServiceRequestLightTurnOn {
     pub brightness: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hs_color: Option<(f32, f32)>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case", tag = "service", content = "service_data")]
+pub enum CallServiceRequestMediaPlayer {
+    VolumeMute(CallServiceRequestMediaPlayerVolumeMute),
+    VolumeSet(CallServiceRequestMediaPlayerVolumeSet),
+    MediaSeek(CallServiceRequestMediaPlayerMediaSeek),
+    ShuffleSet(CallServiceRequestMediaPlayerShuffleSet),
+    RepeatSet(CallServiceRequestMediaPlayerRepeatSet),
+    MediaPlay,
+    MediaPause,
+    MediaNextTrack,
+    MediaPreviousTrack,
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestMediaPlayerVolumeMute {
+    pub is_volume_muted: bool,
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestMediaPlayerVolumeSet {
+    pub volume_level: f32,
+}
+
+#[serde_as]
+#[derive(Serialize)]
+pub struct CallServiceRequestMediaPlayerMediaSeek {
+    #[serde_as(as = "serde_with::DurationSeconds")]
+    pub seek_position: Duration,
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestMediaPlayerShuffleSet {
+    pub shuffle: bool,
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestMediaPlayerRepeatSet {
+    pub repeat: MediaPlayerRepeat,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaPlayerRepeat {
+    Off,
+    One,
+    All,
+}
+
+impl MediaPlayerRepeat {
+    pub fn next(self) -> Self {
+        match self {
+            MediaPlayerRepeat::Off => MediaPlayerRepeat::One,
+            MediaPlayerRepeat::One => MediaPlayerRepeat::All,
+            MediaPlayerRepeat::All => MediaPlayerRepeat::Off,
+        }
+    }
 }
 
 pub mod events {
@@ -533,6 +594,8 @@ pub mod responses {
         pub media_content_type: Option<Cow<'a, str>>,
         pub media_duration: Option<u64>,
         pub media_position: Option<u64>,
+        #[serde(with = "time::serde::iso8601::option", default)]
+        pub media_position_updated_at: Option<time::OffsetDateTime>,
         pub media_title: Option<Cow<'a, str>>,
         pub media_artist: Option<Cow<'a, str>>,
         pub media_album_name: Option<Cow<'a, str>>,

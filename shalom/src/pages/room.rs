@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use iced::{
     advanced::graphics::core::Element,
@@ -8,10 +8,10 @@ use iced::{
     widget::{container, image::Handle, text, Column, Row},
     Font, Renderer, Subscription,
 };
-use internment::Intern;
 use url::Url;
 
 use crate::{
+    hass_client::MediaPlayerRepeat,
     oracle::{Light, MediaPlayerSpeaker, Oracle},
     subscriptions::download_image,
     theme::Icon,
@@ -21,9 +21,10 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Room {
+    id: &'static str,
     oracle: Arc<Oracle>,
     room: crate::oracle::Room,
-    speaker: Option<MediaPlayerSpeaker>,
+    speaker: Option<(&'static str, MediaPlayerSpeaker)>,
     now_playing_image: Option<Handle>,
     lights: BTreeMap<&'static str, Light>,
 }
@@ -36,12 +37,17 @@ impl Room {
         let lights = room.lights(&oracle);
 
         Self {
+            id,
             oracle,
             room,
             speaker,
             now_playing_image: None,
             lights,
         }
+    }
+
+    pub fn room_id(&self) -> &'static str {
+        self.id
     }
 
     pub fn update(&mut self, event: Message) -> Option<Event> {
@@ -59,7 +65,7 @@ impl Room {
                 if self
                     .speaker
                     .as_ref()
-                    .and_then(|v| v.entity_picture.as_ref())
+                    .and_then(|(_, v)| v.entity_picture.as_ref())
                     == Some(&url)
                 {
                     self.now_playing_image = Some(handle);
@@ -73,11 +79,11 @@ impl Room {
                 if self
                     .speaker
                     .as_ref()
-                    .and_then(|v| v.entity_picture.as_ref())
+                    .and_then(|(_, v)| v.entity_picture.as_ref())
                     != new
                         .as_ref()
                         .as_ref()
-                        .and_then(|v| v.entity_picture.as_ref())
+                        .and_then(|(_, v)| v.entity_picture.as_ref())
                 {
                     self.now_playing_image = None;
                 }
@@ -92,6 +98,25 @@ impl Room {
                 }
 
                 None
+            }
+            Message::OnSpeakerVolumeChange(new) => {
+                Some(Event::SetSpeakerVolume(self.speaker.as_ref()?.0, new))
+            }
+            Message::OnSpeakerPositionChange(new) => {
+                Some(Event::SetSpeakerPosition(self.speaker.as_ref()?.0, new))
+            }
+            Message::OnSpeakerStateChange(new) => {
+                Some(Event::SetSpeakerPlaying(self.speaker.as_ref()?.0, new))
+            }
+            Message::OnSpeakerMuteChange(new) => {
+                Some(Event::SetSpeakerMuted(self.speaker.as_ref()?.0, new))
+            }
+            Message::OnSpeakerRepeatChange(new) => {
+                Some(Event::SetSpeakerRepeat(self.speaker.as_ref()?.0, new))
+            }
+            Message::OnSpeakerNextTrack => Some(Event::SpeakerNextTrack(self.speaker.as_ref()?.0)),
+            Message::OnSpeakerPreviousTrack => {
+                Some(Event::SpeakerPreviousTrack(self.speaker.as_ref()?.0))
             }
         }
     }
@@ -128,12 +153,18 @@ impl Room {
 
         let mut col = Column::new().spacing(20).padding(40).push(header);
 
-        if let Some(speaker) = self.speaker.clone() {
+        if let Some((_, speaker)) = self.speaker.clone() {
             col = col.push(
-                container(widgets::media_player::media_player(
-                    speaker,
-                    self.now_playing_image.clone(),
-                ))
+                container(
+                    widgets::media_player::media_player(speaker, self.now_playing_image.clone())
+                        .on_volume_change(Message::OnSpeakerVolumeChange)
+                        .on_mute_change(Message::OnSpeakerMuteChange)
+                        .on_repeat_change(Message::OnSpeakerRepeatChange)
+                        .on_state_change(Message::OnSpeakerStateChange)
+                        .on_position_change(Message::OnSpeakerPositionChange)
+                        .on_next_track(Message::OnSpeakerNextTrack)
+                        .on_previous_track(Message::OnSpeakerPreviousTrack),
+                )
                 .padding([12, 0, 24, 0]),
             );
         }
@@ -155,7 +186,7 @@ impl Room {
         let image_subscription = if let (Some(uri), None) = (
             self.speaker
                 .as_ref()
-                .and_then(|v| v.entity_picture.as_ref()),
+                .and_then(|(_, v)| v.entity_picture.as_ref()),
             &self.now_playing_image,
         ) {
             download_image(uri.clone(), uri.clone(), Message::NowPlayingImageLoaded)
@@ -163,17 +194,17 @@ impl Room {
             Subscription::none()
         };
 
-        let speaker_subscription =
-            if let Some(speaker_id) = self.room.speaker_id.map(Intern::as_ref) {
-                subscription::run_with_id(
-                    speaker_id,
-                    self.oracle
-                        .subscribe_id(speaker_id)
-                        .map(|()| Message::UpdateSpeaker),
-                )
-            } else {
-                Subscription::none()
-            };
+        let speaker_subscription = if let Some(speaker_id) = self.speaker.as_ref().map(|(k, _)| *k)
+        {
+            subscription::run_with_id(
+                speaker_id,
+                self.oracle
+                    .subscribe_id(speaker_id)
+                    .map(|()| Message::UpdateSpeaker),
+            )
+        } else {
+            Subscription::none()
+        };
 
         let light_subscriptions = Subscription::batch(self.lights.keys().copied().map(|key| {
             subscription::run_with_id(
@@ -195,6 +226,13 @@ impl Room {
 pub enum Event {
     OpenLightContextMenu(&'static str),
     SetLightState(&'static str, bool),
+    SetSpeakerVolume(&'static str, f32),
+    SetSpeakerPosition(&'static str, Duration),
+    SetSpeakerPlaying(&'static str, bool),
+    SetSpeakerMuted(&'static str, bool),
+    SetSpeakerRepeat(&'static str, MediaPlayerRepeat),
+    SpeakerNextTrack(&'static str),
+    SpeakerPreviousTrack(&'static str),
 }
 
 #[derive(Clone, Debug)]
@@ -204,4 +242,11 @@ pub enum Message {
     OpenLightOptions(&'static str),
     UpdateSpeaker,
     UpdateLight(&'static str),
+    OnSpeakerVolumeChange(f32),
+    OnSpeakerPositionChange(Duration),
+    OnSpeakerStateChange(bool),
+    OnSpeakerMuteChange(bool),
+    OnSpeakerRepeatChange(MediaPlayerRepeat),
+    OnSpeakerNextTrack,
+    OnSpeakerPreviousTrack,
 }
