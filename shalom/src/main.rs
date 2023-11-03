@@ -103,6 +103,14 @@ impl Application for Shalom {
 
                     Command::none()
                 }
+                Some(pages::room::Event::SetLightState(id, state)) => {
+                    let oracle = self.oracle.as_ref().unwrap().clone();
+
+                    Command::perform(
+                        async move { oracle.set_light_state(id, state).await },
+                        Message::UpdateLightResult,
+                    )
+                }
                 None => Command::none(),
             },
             (Message::LightControlMenu(e), _, Some(ActiveContextMenu::LightControl(menu))) => {

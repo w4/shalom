@@ -1,6 +1,6 @@
 #![allow(clippy::forget_non_drop, dead_code)]
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
 
 use iced::futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -38,11 +38,26 @@ impl Client {
         resp.map_project(move |value, _| serde_json::from_str(value.get()).unwrap())
     }
 
+    pub async fn call_service(
+        &self,
+        entity_id: &'static str,
+        payload: CallServiceRequestData,
+    ) -> Yoke<responses::CallServiceResponse, String> {
+        self.request::<responses::CallServiceResponse>(HassRequestKind::CallService(
+            CallServiceRequest {
+                target: Some(CallServiceRequestTarget { entity_id }),
+                data: payload,
+            },
+        ))
+        .await
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<Arc<Yoke<Event<'static>, String>>> {
         self.broadcast_channel.subscribe()
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn create(config: HomeAssistantConfig) -> Client {
     let (sender, mut recv) = mpsc::channel(10);
 
@@ -78,6 +93,10 @@ pub async fn create(config: HomeAssistantConfig) -> Client {
                             let yoked_payload: Yoke<HassResponse, String> = Yoke::attach_to_cart(payload, |s| serde_json::from_str(s).unwrap());
 
                             let payload: &HassResponse = yoked_payload.get();
+
+                            if let Some(error) = &payload.error {
+                                eprintln!("error: {error:?}");
+                            }
 
                             match payload.type_ {
                                 HassResponseType::AuthRequired => {
@@ -168,8 +187,18 @@ struct HassResponse<'a> {
     type_: HassResponseType,
     #[serde(borrow)]
     result: Option<&'a RawValue>,
+    #[serde(borrow)]
+    error: Option<Error<'a>>,
     #[serde(borrow, bound(deserialize = "'a: 'de"))]
     event: Option<Event<'a>>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Error<'a> {
+    #[serde(borrow)]
+    pub code: Cow<'a, str>,
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
 }
 
 #[derive(Deserialize, Clone, Debug, Yokeable)]
@@ -243,12 +272,15 @@ pub enum CallServiceRequestData {
 #[serde(rename_all = "snake_case", tag = "service", content = "service_data")]
 pub enum CallServiceRequestLight {
     TurnOn(CallServiceRequestLightTurnOn),
+    TurnOff,
 }
 
 #[derive(Serialize)]
 pub struct CallServiceRequestLightTurnOn {
-    pub brightness: u8,
-    pub hs_color: (f32, f32),
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brightness: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hs_color: Option<(f32, f32)>,
 }
 
 pub mod events {

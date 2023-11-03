@@ -16,12 +16,11 @@ use url::Url;
 use crate::{
     hass_client::{
         responses::{
-            Area, AreaRegistryList, CallServiceResponse, ColorMode, DeviceRegistryList, Entity,
+            Area, AreaRegistryList, ColorMode, DeviceRegistryList, Entity,
             EntityRegistryList, StateAttributes, StateLightAttributes, StateMediaPlayerAttributes,
             StateWeatherAttributes, StatesList, WeatherCondition,
-        },
-        CallServiceRequest, CallServiceRequestData, CallServiceRequestLight,
-        CallServiceRequestLightTurnOn, CallServiceRequestTarget, Event, HassRequestKind,
+        }, CallServiceRequestData, CallServiceRequestLight,
+        CallServiceRequestLightTurnOn, Event, HassRequestKind,
     },
     widgets::colour_picker::clamp_to_u8,
 };
@@ -82,7 +81,7 @@ impl Oracle {
                 StateAttributes::Light(attr) => {
                     lights.insert(
                         Intern::<str>::from(state.entity_id.as_ref()).as_ref(),
-                        Light::from(attr.clone()),
+                        Light::from((attr.clone(), state.state.as_ref())),
                     );
                 }
                 _ => {}
@@ -135,6 +134,23 @@ impl Oracle {
         self.lights.lock().unwrap().get(entity_id).cloned()
     }
 
+    pub async fn set_light_state(&self, entity_id: &'static str, on: bool) {
+        let _res = self
+            .client
+            .call_service(
+                entity_id,
+                CallServiceRequestData::Light(if on {
+                    CallServiceRequestLight::TurnOn(CallServiceRequestLightTurnOn {
+                        brightness: None,
+                        hs_color: None,
+                    })
+                } else {
+                    CallServiceRequestLight::TurnOff
+                }),
+            )
+            .await;
+    }
+
     pub async fn update_light(
         &self,
         entity_id: &'static str,
@@ -144,15 +160,15 @@ impl Oracle {
     ) {
         let _res = self
             .client
-            .request::<CallServiceResponse>(HassRequestKind::CallService(CallServiceRequest {
-                target: Some(CallServiceRequestTarget { entity_id }),
-                data: CallServiceRequestData::Light(CallServiceRequestLight::TurnOn(
+            .call_service(
+                entity_id,
+                CallServiceRequestData::Light(CallServiceRequestLight::TurnOn(
                     CallServiceRequestLightTurnOn {
-                        hs_color: (hue, saturation * 100.),
-                        brightness: clamp_to_u8(brightness),
+                        hs_color: Some((hue, saturation * 100.)),
+                        brightness: Some(clamp_to_u8(brightness)),
                     },
                 )),
-            }))
+            )
             .await;
     }
 
@@ -186,7 +202,10 @@ impl Oracle {
                             StateAttributes::Light(attrs) => {
                                 self.lights.lock().unwrap().insert(
                                     Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
-                                    Light::from(attrs.clone()),
+                                    Light::from((
+                                        attrs.clone(),
+                                        state_changed.new_state.state.as_ref(),
+                                    )),
                                 );
                             }
                             _ => {
@@ -276,6 +295,7 @@ impl MediaPlayer {
 
 #[derive(Debug, Clone)]
 pub struct Light {
+    pub on: Option<bool>,
     pub min_color_temp_kelvin: Option<u16>,
     pub max_color_temp_kelvin: Option<u16>,
     pub min_mireds: Option<u16>,
@@ -291,9 +311,17 @@ pub struct Light {
     pub hs_color: Option<(f32, f32)>,
 }
 
-impl From<StateLightAttributes<'_>> for Light {
-    fn from(value: StateLightAttributes<'_>) -> Self {
+impl From<(StateLightAttributes<'_>, &str)> for Light {
+    fn from((value, state): (StateLightAttributes<'_>, &str)) -> Self {
+        let on = match state {
+            "on" => Some(true),
+            "off" => Some(false),
+            "unavailable" => None,
+            v => panic!("unknown light state: {v}"),
+        };
+
         Self {
+            on,
             min_color_temp_kelvin: value.min_color_temp_kelvin,
             max_color_temp_kelvin: value.max_color_temp_kelvin,
             min_mireds: value.min_mireds,
@@ -352,16 +380,12 @@ impl Room {
         }
     }
 
-    pub fn light_names(&self, oracle: &Oracle) -> BTreeMap<&'static str, Box<str>> {
+    pub fn lights(&self, oracle: &Oracle) -> BTreeMap<&'static str, Light> {
         let lights = oracle.lights.lock().unwrap();
 
         self.lights
             .iter()
-            .filter_map(|v| Some((*v).as_ref()).zip(lights.get(v.as_ref())))
-            .map(|(id, light)| {
-                eprintln!("{light:?}");
-                (id, light.friendly_name.clone())
-            })
+            .filter_map(|v| Some((*v).as_ref()).zip(lights.get(v.as_ref()).cloned()))
             .collect()
     }
 }

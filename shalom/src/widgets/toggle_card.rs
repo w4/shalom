@@ -12,7 +12,7 @@ use iced::{
 
 use crate::{
     theme::{
-        colours::{AMBER_200, SKY_400, SKY_500, SLATE_200, SLATE_300},
+        colours::{AMBER_200, SKY_400, SKY_500, SLATE_200, SLATE_300, SLATE_600},
         Icon,
     },
     widgets::mouse_area::mouse_area,
@@ -20,10 +20,11 @@ use crate::{
 
 pub const LONG_PRESS_LENGTH: Duration = Duration::from_millis(350);
 
-pub fn toggle_card<M>(name: &str, active: bool) -> ToggleCard<M> {
+pub fn toggle_card<M>(name: &str, active: bool, disabled: bool) -> ToggleCard<M> {
     ToggleCard {
         name: Box::from(name),
         active,
+        disabled,
         ..ToggleCard::default()
     }
 }
@@ -34,6 +35,7 @@ pub struct ToggleCard<M> {
     height: Length,
     width: Length,
     active: bool,
+    disabled: bool,
     on_press: Option<M>,
     on_long_press: Option<M>,
 }
@@ -46,6 +48,7 @@ impl<M> Default for ToggleCard<M> {
             height: Length::Shrink,
             width: Length::Fill,
             active: false,
+            disabled: false,
             on_press: None,
             on_long_press: None,
         }
@@ -111,11 +114,12 @@ impl<M: Clone> iced::widget::Component<M, Renderer> for ToggleCard<M> {
     }
 
     fn view(&self, state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let style = match (self.active, state.mouse_down_start) {
-            (true, None) => Style::Active,
-            (true, Some(_)) => Style::ActiveHover,
-            (false, None) => Style::Inactive,
-            (false, Some(_)) => Style::InactiveHover,
+        let style = match (self.disabled, self.active, state.mouse_down_start) {
+            (true, _, _) => Style::Disabled,
+            (_, true, None) => Style::Active,
+            (_, true, Some(_)) => Style::ActiveHover,
+            (_, false, None) => Style::Inactive,
+            (_, false, Some(_)) => Style::InactiveHover,
         };
 
         let icon = self.icon.map(|icon| {
@@ -185,6 +189,7 @@ pub enum Style {
     ActiveHover,
     Inactive,
     InactiveHover,
+    Disabled,
 }
 
 impl container::StyleSheet for Style {
@@ -192,6 +197,13 @@ impl container::StyleSheet for Style {
 
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
         match self {
+            Style::Disabled => container::Appearance {
+                text_color: Some(Color::BLACK),
+                background: Some(Background::Color(SLATE_600)),
+                border_radius: 5.0.into(),
+                border_width: 0.0,
+                border_color: Color::default(),
+            },
             Style::Inactive => container::Appearance {
                 text_color: Some(Color::BLACK),
                 background: Some(Background::Color(SLATE_200)),
@@ -232,7 +244,7 @@ impl svg::StyleSheet for Style {
             Style::Active | Style::ActiveHover => svg::Appearance {
                 color: Some(AMBER_200),
             },
-            Style::Inactive | Style::InactiveHover => svg::Appearance {
+            Style::Inactive | Style::InactiveHover | Style::Disabled => svg::Appearance {
                 color: Some(Color::BLACK),
             },
         }

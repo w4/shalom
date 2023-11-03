@@ -12,7 +12,7 @@ use internment::Intern;
 use url::Url;
 
 use crate::{
-    oracle::{MediaPlayerSpeaker, Oracle},
+    oracle::{Light, MediaPlayerSpeaker, Oracle},
     subscriptions::download_image,
     theme::Icon,
     widgets,
@@ -24,7 +24,7 @@ pub struct Room {
     room: crate::oracle::Room,
     speaker: Option<MediaPlayerSpeaker>,
     now_playing_image: Option<Handle>,
-    lights: BTreeMap<&'static str, Box<str>>,
+    lights: BTreeMap<&'static str, Light>,
 }
 
 impl Room {
@@ -32,7 +32,7 @@ impl Room {
         let room = oracle.room(id).clone();
         let speaker = room.speaker(&oracle);
 
-        let lights = room.light_names(&oracle);
+        let lights = room.lights(&oracle);
 
         Self {
             oracle,
@@ -45,22 +45,15 @@ impl Room {
 
     pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
-            Message::LightToggle(_name) => {
-                // let x = state.lights.entry(name).or_default();
-                // if *x == 0 {
-                //     *x = 1;
-                // } else {
-                //     *x = 0;
-                // }
-                //
-                None
+            Message::SetLightState(id, state) => {
+                // give instant feedback before we get the event back from hass
+                if let Some(light) = self.lights.get_mut(id) {
+                    light.on = Some(state);
+                }
+
+                Some(Event::SetLightState(id, state))
             }
-            Message::OpenLightOptions(name) => Some(Event::OpenLightContextMenu(name)),
-            Message::UpdateLightAmount(_name, _v) => {
-                // let x = state.lights.entry(name).or_default();
-                // *x = v;
-                None
-            }
+            Message::OpenLightOptions(id) => Some(Event::OpenLightContextMenu(id)),
             Message::NowPlayingImageLoaded(url, handle) => {
                 if self
                     .speaker
@@ -92,6 +85,13 @@ impl Room {
 
                 None
             }
+            Message::UpdateLight(entity_id) => {
+                if let Some(light) = self.oracle.fetch_light(entity_id) {
+                    self.lights.insert(entity_id, light);
+                }
+
+                None
+            }
         }
     }
 
@@ -102,11 +102,21 @@ impl Room {
             ..Font::with_name("Helvetica Neue")
         });
 
-        let light = |id, name| {
-            widgets::toggle_card::toggle_card(name, false)
-                .icon(Icon::Bulb)
-                .on_press(Message::LightToggle(id))
-                .on_long_press(Message::OpenLightOptions(id))
+        let light = |id, light: &Light| {
+            let mut toggle_card = widgets::toggle_card::toggle_card(
+                &light.friendly_name,
+                light.on.unwrap_or_default(),
+                light.on.is_none(),
+            )
+            .icon(Icon::Bulb);
+
+            if let Some(state) = light.on {
+                toggle_card = toggle_card
+                    .on_press(Message::SetLightState(id, !state))
+                    .on_long_press(Message::OpenLightOptions(id));
+            }
+
+            toggle_card
         };
 
         let mut col = Column::new().spacing(20).padding(40).push(header);
@@ -124,7 +134,7 @@ impl Room {
         let lights = Row::with_children(
             self.lights
                 .iter()
-                .map(|(id, name)| light(*id, name))
+                .map(|(id, item)| light(*id, item))
                 .map(Element::from)
                 .collect::<Vec<_>>(),
         )
@@ -158,19 +168,33 @@ impl Room {
                 Subscription::none()
             };
 
-        Subscription::batch([image_subscription, speaker_subscription])
+        let light_subscriptions = Subscription::batch(self.lights.keys().copied().map(|key| {
+            subscription::run_with_id(
+                key,
+                self.oracle
+                    .subscribe_id(key)
+                    .map(|()| Message::UpdateLight(key)),
+            )
+        }));
+
+        Subscription::batch([
+            image_subscription,
+            speaker_subscription,
+            light_subscriptions,
+        ])
     }
 }
 
 pub enum Event {
     OpenLightContextMenu(&'static str),
+    SetLightState(&'static str, bool),
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
     NowPlayingImageLoaded(Url, Handle),
-    LightToggle(&'static str),
+    SetLightState(&'static str, bool),
     OpenLightOptions(&'static str),
-    UpdateLightAmount(&'static str, u8),
     UpdateSpeaker,
+    UpdateLight(&'static str),
 }
