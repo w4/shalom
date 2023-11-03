@@ -16,11 +16,12 @@ use url::Url;
 use crate::{
     hass_client::{
         responses::{
-            Area, AreaRegistryList, ColorMode, DeviceRegistryList, Entity,
-            EntityRegistryList, StateAttributes, StateLightAttributes, StateMediaPlayerAttributes,
+            Area, AreaRegistryList, ColorMode, DeviceRegistryList, Entity, EntityRegistryList,
+            StateAttributes, StateLightAttributes, StateMediaPlayerAttributes,
             StateWeatherAttributes, StatesList, WeatherCondition,
-        }, CallServiceRequestData, CallServiceRequestLight,
-        CallServiceRequestLightTurnOn, Event, HassRequestKind,
+        },
+        CallServiceRequestData, CallServiceRequestLight, CallServiceRequestLightTurnOn, Event,
+        HassRequestKind,
     },
     widgets::colour_picker::clamp_to_u8,
 };

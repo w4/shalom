@@ -36,6 +36,7 @@ pub struct ToggleCard<M> {
     width: Length,
     active: bool,
     disabled: bool,
+    active_icon_colour: Option<Color>,
     on_press: Option<M>,
     on_long_press: Option<M>,
 }
@@ -49,6 +50,7 @@ impl<M> Default for ToggleCard<M> {
             width: Length::Fill,
             active: false,
             disabled: false,
+            active_icon_colour: None,
             on_press: None,
             on_long_press: None,
         }
@@ -56,6 +58,11 @@ impl<M> Default for ToggleCard<M> {
 }
 
 impl<M> ToggleCard<M> {
+    pub fn active_icon_colour(mut self, color: Option<Color>) -> Self {
+        self.active_icon_colour = color;
+        self
+    }
+
     pub fn on_press(mut self, msg: M) -> Self {
         self.on_press = Some(msg);
         self
@@ -116,8 +123,8 @@ impl<M: Clone> iced::widget::Component<M, Renderer> for ToggleCard<M> {
     fn view(&self, state: &Self::State) -> Element<'_, Self::Event, Renderer> {
         let style = match (self.disabled, self.active, state.mouse_down_start) {
             (true, _, _) => Style::Disabled,
-            (_, true, None) => Style::Active,
-            (_, true, Some(_)) => Style::ActiveHover,
+            (_, true, None) => Style::Active(self.active_icon_colour),
+            (_, true, Some(_)) => Style::ActiveHover(self.active_icon_colour),
             (_, false, None) => Style::Inactive,
             (_, false, Some(_)) => Style::InactiveHover,
         };
@@ -185,8 +192,8 @@ pub enum ToggleCardEvent {
 
 #[derive(Copy, Clone)]
 pub enum Style {
-    Active,
-    ActiveHover,
+    Active(Option<Color>),
+    ActiveHover(Option<Color>),
     Inactive,
     InactiveHover,
     Disabled,
@@ -218,14 +225,14 @@ impl container::StyleSheet for Style {
                 border_width: 0.0,
                 border_color: Color::default(),
             },
-            Style::Active => container::Appearance {
+            Style::Active(_) => container::Appearance {
                 text_color: Some(Color::WHITE),
                 background: Some(Background::Color(SKY_400)),
                 border_radius: 5.0.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },
-            Style::ActiveHover => container::Appearance {
+            Style::ActiveHover(_) => container::Appearance {
                 text_color: Some(Color::WHITE),
                 background: Some(Background::Color(SKY_500)),
                 border_radius: 5.0.into(),
@@ -241,8 +248,8 @@ impl svg::StyleSheet for Style {
 
     fn appearance(&self, _style: &Self::Style) -> svg::Appearance {
         match self {
-            Style::Active | Style::ActiveHover => svg::Appearance {
-                color: Some(AMBER_200),
+            Style::Active(c) | Style::ActiveHover(c) => svg::Appearance {
+                color: Some(c.unwrap_or(AMBER_200)),
             },
             Style::Inactive | Style::InactiveHover | Style::Disabled => svg::Appearance {
                 color: Some(Color::BLACK),

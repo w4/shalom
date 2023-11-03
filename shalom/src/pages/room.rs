@@ -16,6 +16,7 @@ use crate::{
     subscriptions::download_image,
     theme::Icon,
     widgets,
+    widgets::colour_picker::colour_from_hsb,
 };
 
 #[derive(Debug)]
@@ -108,7 +109,13 @@ impl Room {
                 light.on.unwrap_or_default(),
                 light.on.is_none(),
             )
-            .icon(Icon::Bulb);
+            .icon(Icon::Bulb)
+            .active_icon_colour(
+                light
+                    .hs_color
+                    .zip(light.brightness)
+                    .map(|((h, s), b)| colour_from_hsb(h, s, b / 255.)),
+            );
 
             if let Some(state) = light.on {
                 toggle_card = toggle_card
