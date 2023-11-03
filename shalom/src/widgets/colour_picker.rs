@@ -11,6 +11,7 @@ use iced::{
     },
     Color, Point, Rectangle, Renderer, Size, Theme,
 };
+use palette::IntoColor;
 
 use crate::widgets::forced_rounded::forced_rounded;
 
@@ -19,6 +20,7 @@ pub struct ColourPicker<Event> {
     saturation: f32,
     brightness: f32,
     on_change: fn(f32, f32, f32) -> Event,
+    on_mouse_up: Event,
 }
 
 impl<Event> ColourPicker<Event> {
@@ -27,28 +29,31 @@ impl<Event> ColourPicker<Event> {
         saturation: f32,
         brightness: f32,
         on_change: fn(f32, f32, f32) -> Event,
+        on_mouse_up: Event,
     ) -> Self {
         Self {
             hue,
             saturation,
             brightness,
             on_change,
+            on_mouse_up,
         }
     }
 }
 
-impl<Event> Component<Event, Renderer> for ColourPicker<Event> {
+impl<Event: Clone> Component<Event, Renderer> for ColourPicker<Event> {
     type State = ();
     type Event = Message;
 
     fn update(&mut self, _state: &mut Self::State, event: Self::Event) -> Option<Event> {
         match event {
-            Message::OnSaturationBrightnessChange(saturation, brightness) => {
+            Message::SaturationBrightnessChange(saturation, brightness) => {
                 Some((self.on_change)(self.hue, saturation, brightness))
             }
-            Message::OnHueChanged(hue) => {
+            Message::HueChanged(hue) => {
                 Some((self.on_change)(hue, self.saturation, self.brightness))
             }
+            Message::MouseUp => Some(self.on_mouse_up.clone()),
         }
     }
 
@@ -58,7 +63,8 @@ impl<Event> Component<Event, Renderer> for ColourPicker<Event> {
                 self.hue,
                 self.saturation,
                 self.brightness,
-                Message::OnSaturationBrightnessChange,
+                Message::SaturationBrightnessChange,
+                Message::MouseUp,
             ))
             .height(192)
             .width(192)
@@ -66,10 +72,14 @@ impl<Event> Component<Event, Renderer> for ColourPicker<Event> {
         );
 
         let hue_slider = forced_rounded(
-            canvas(HueSlider::new(self.hue, Message::OnHueChanged))
-                .height(192)
-                .width(32)
-                .into(),
+            canvas(HueSlider::new(
+                self.hue,
+                Message::HueChanged,
+                Message::MouseUp,
+            ))
+            .height(192)
+            .width(32)
+            .into(),
         );
 
         Row::new()
@@ -91,22 +101,28 @@ where
 
 #[derive(Clone)]
 pub enum Message {
-    OnSaturationBrightnessChange(f32, f32),
-    OnHueChanged(f32),
+    SaturationBrightnessChange(f32, f32),
+    HueChanged(f32),
+    MouseUp,
 }
 
 pub struct HueSlider<Message> {
     hue: f32,
     on_hue_change: fn(f32) -> Message,
+    on_mouse_up: Message,
 }
 
 impl<Message> HueSlider<Message> {
-    fn new(hue: f32, on_hue_change: fn(f32) -> Message) -> Self {
-        Self { hue, on_hue_change }
+    fn new(hue: f32, on_hue_change: fn(f32) -> Message, on_mouse_up: Message) -> Self {
+        Self {
+            hue,
+            on_hue_change,
+            on_mouse_up,
+        }
     }
 }
 
-impl<Message> canvas::Program<Message> for HueSlider<Message> {
+impl<Message: Clone> canvas::Program<Message> for HueSlider<Message> {
     type State = HueSliderState;
 
     fn update(
@@ -116,26 +132,28 @@ impl<Message> canvas::Program<Message> for HueSlider<Message> {
         bounds: Rectangle,
         cursor: Cursor,
     ) -> (Status, Option<Message>) {
-        let update = match event {
+        let (update, mouse_up) = match event {
             Event::Mouse(mouse::Event::ButtonPressed(Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. })
                 if cursor.is_over(bounds) =>
             {
                 state.is_dragging = true;
-                true
+                (true, false)
             }
             Event::Mouse(mouse::Event::ButtonReleased(Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. } | touch::Event::FingerLost { .. }) => {
+            | Event::Touch(touch::Event::FingerLifted { .. } | touch::Event::FingerLost { .. })
+                if state.is_dragging =>
+            {
                 state.is_dragging = false;
-                false
+                (false, true)
             }
             Event::Mouse(mouse::Event::CursorMoved { .. })
             | Event::Touch(touch::Event::FingerMoved { .. })
                 if state.is_dragging =>
             {
-                true
+                (true, false)
             }
-            _ => false,
+            _ => (false, false),
         };
 
         if update {
@@ -147,6 +165,8 @@ impl<Message> canvas::Program<Message> for HueSlider<Message> {
             } else {
                 (Status::Captured, None)
             }
+        } else if mouse_up {
+            (Status::Captured, Some(self.on_mouse_up.clone()))
         } else {
             (Status::Ignored, None)
         }
@@ -223,6 +243,7 @@ pub struct SaturationBrightnessPicker<Message> {
     saturation: f32,
     brightness: f32,
     on_change: fn(f32, f32) -> Message,
+    on_mouse_up: Message,
 }
 
 impl<Message> SaturationBrightnessPicker<Message> {
@@ -231,17 +252,19 @@ impl<Message> SaturationBrightnessPicker<Message> {
         saturation: f32,
         brightness: f32,
         on_change: fn(f32, f32) -> Message,
+        on_mouse_up: Message,
     ) -> Self {
         Self {
             hue,
             saturation,
             brightness,
             on_change,
+            on_mouse_up,
         }
     }
 }
 
-impl<Message> canvas::Program<Message> for SaturationBrightnessPicker<Message> {
+impl<Message: Clone> canvas::Program<Message> for SaturationBrightnessPicker<Message> {
     type State = SaturationBrightnessPickerState;
 
     fn update(
@@ -259,26 +282,28 @@ impl<Message> canvas::Program<Message> for SaturationBrightnessPicker<Message> {
             state.content_cache.clear();
         }
 
-        let update = match event {
+        let (update, mouse_up) = match event {
             Event::Mouse(mouse::Event::ButtonPressed(Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. })
                 if cursor.is_over(bounds) =>
             {
                 state.is_dragging = true;
-                true
+                (true, false)
             }
             Event::Mouse(mouse::Event::ButtonReleased(Button::Left))
-            | Event::Touch(touch::Event::FingerLifted { .. } | touch::Event::FingerLost { .. }) => {
+            | Event::Touch(touch::Event::FingerLifted { .. } | touch::Event::FingerLost { .. })
+                if state.is_dragging =>
+            {
                 state.is_dragging = false;
-                false
+                (false, true)
             }
             Event::Mouse(mouse::Event::CursorMoved { .. })
             | Event::Touch(touch::Event::FingerMoved { .. })
                 if state.is_dragging =>
             {
-                true
+                (true, false)
             }
-            _ => false,
+            _ => (false, false),
         };
 
         if update {
@@ -295,6 +320,8 @@ impl<Message> canvas::Program<Message> for SaturationBrightnessPicker<Message> {
             } else {
                 (Status::Ignored, None)
             }
+        } else if mouse_up {
+            (Status::Captured, Some(self.on_mouse_up.clone()))
         } else {
             (Status::Ignored, None)
         }
@@ -368,25 +395,17 @@ pub struct SaturationBrightnessPickerState {
     hue: f32,
 }
 
-fn colour_from_hsb(hue: f32, saturation: f32, brightness: f32) -> Color {
-    let chroma = brightness * saturation;
-    let hue_prime = hue / 60.0;
-    let second_largest_component = chroma * (1.0 - (hue_prime % 2.0 - 1.0).abs());
-    let match_value = brightness - chroma;
+pub fn colour_from_hsb(hue: f32, saturation: f32, brightness: f32) -> Color {
+    let rgb: palette::Srgb = palette::Hsv::new(hue, saturation, brightness).into_color();
+    Color::from_rgb(rgb.red, rgb.green, rgb.blue)
+}
 
-    let (red, green, blue) = if hue < 60.0 {
-        (chroma, second_largest_component, 0.0)
-    } else if hue < 120.0 {
-        (second_largest_component, chroma, 0.0)
-    } else if hue < 180.0 {
-        (0.0, chroma, second_largest_component)
-    } else if hue < 240.0 {
-        (0.0, second_largest_component, chroma)
-    } else if hue < 300.0 {
-        (second_largest_component, 0.0, chroma)
-    } else {
-        (chroma, 0.0, second_largest_component)
-    };
+pub fn clamp_to_u8(v: f32) -> u8 {
+    let clamped = v.clamp(0., 1.);
+    let scaled = (clamped * 255.).round();
 
-    Color::from_rgb(red + match_value, green + match_value, blue + match_value)
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    {
+        scaled as u8
+    }
 }

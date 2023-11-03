@@ -111,10 +111,7 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
         _viewport: &Rectangle,
     ) {
         // TODO: get sunrise/sunset from somewhere reasonable
-        let day_time = match OffsetDateTime::now_utc().hour() {
-            5..=19 => true,
-            _ => false,
-        };
+        let day_time = matches!(OffsetDateTime::now_utc().hour(), 5..=19);
 
         let gradient = if day_time {
             Linear::new(Degrees(90.))

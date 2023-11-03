@@ -73,12 +73,15 @@ impl Application for Shalom {
                     "living_room",
                     self.oracle.clone().unwrap(),
                 ));
+                Command::none()
             }
             (Message::CloseContextMenu, _, _) => {
                 self.context_menu = None;
+                Command::none()
             }
             (Message::OpenOmniPage, _, _) => {
                 self.page = ActivePage::Omni(pages::omni::Omni::new(self.oracle.clone().unwrap()));
+                Command::none()
             }
             (Message::OmniEvent(e), ActivePage::Omni(r), _) => match r.update(e) {
                 Some(pages::omni::Event::OpenRoom(room)) => {
@@ -86,26 +89,42 @@ impl Application for Shalom {
                         room,
                         self.oracle.clone().unwrap(),
                     ));
+                    Command::none()
                 }
-                None => {}
+                None => Command::none(),
             },
             (Message::RoomEvent(e), ActivePage::Room(r), _) => match r.update(e) {
-                Some(pages::room::Event::OpenLightContextMenu(light)) => {
-                    self.context_menu = Some(ActiveContextMenu::LightControl(
-                        context_menus::light_control::LightControl::new(light),
-                    ));
+                Some(pages::room::Event::OpenLightContextMenu(id)) => {
+                    if let Some(light) = self.oracle.as_ref().and_then(|o| o.fetch_light(id)) {
+                        self.context_menu = Some(ActiveContextMenu::LightControl(
+                            context_menus::light_control::LightControl::new(id, light),
+                        ));
+                    }
+
+                    Command::none()
                 }
-                None => {}
+                None => Command::none(),
             },
             (Message::LightControlMenu(e), _, Some(ActiveContextMenu::LightControl(menu))) => {
                 match menu.update(e) {
-                    Some(_) | None => {}
+                    Some(context_menus::light_control::Event::UpdateLightColour {
+                        id,
+                        hue,
+                        saturation,
+                        brightness,
+                    }) => {
+                        let oracle = self.oracle.as_ref().unwrap().clone();
+
+                        Command::perform(
+                            async move { oracle.update_light(id, hue, saturation, brightness).await },
+                            Message::UpdateLightResult,
+                        )
+                    }
+                    None => Command::none(),
                 }
             }
-            _ => {}
+            _ => Command::none(),
         }
-
-        Command::none()
     }
 
     fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
@@ -204,6 +223,7 @@ pub enum Message {
     OmniEvent(pages::omni::Message),
     RoomEvent(pages::room::Message),
     LightControlMenu(context_menus::light_control::Message),
+    UpdateLightResult(()),
 }
 
 #[derive(Debug)]

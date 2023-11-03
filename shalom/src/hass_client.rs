@@ -212,12 +212,43 @@ pub enum HassRequestKind {
     SubscribeEvents {
         event_type: Option<String>,
     },
+    CallService(CallServiceRequest),
 }
 
 impl HassRequest {
     pub fn to_request(&self) -> Message {
         Message::text(serde_json::to_string(&self).unwrap())
     }
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequest {
+    pub target: Option<CallServiceRequestTarget>,
+    #[serde(flatten)]
+    pub data: CallServiceRequestData,
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestTarget {
+    pub entity_id: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case", tag = "domain")]
+pub enum CallServiceRequestData {
+    Light(CallServiceRequestLight),
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case", tag = "service", content = "service_data")]
+pub enum CallServiceRequestLight {
+    TurnOn(CallServiceRequestLightTurnOn),
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestLightTurnOn {
+    pub brightness: u8,
+    pub hs_color: (f32, f32),
 }
 
 pub mod events {
@@ -252,6 +283,9 @@ pub mod responses {
     use yoke::Yokeable;
 
     use crate::theme::Icon;
+
+    #[derive(Deserialize, Yokeable, Debug)]
+    pub struct CallServiceResponse {}
 
     #[derive(Deserialize, Yokeable, Debug)]
     pub struct AreaRegistryList<'a>(#[serde(borrow)] pub Vec<Area<'a>>);
@@ -635,7 +669,7 @@ pub mod responses {
         pub brightness: Option<f32>,
         pub color_temp_kelvin: Option<u16>,
         pub color_temp: Option<u16>,
-        pub xy_color: Option<(f32, f32)>,
+        pub hs_color: Option<(f32, f32)>,
     }
 
     #[derive(Deserialize, Debug, Clone, Copy)]

@@ -13,13 +13,17 @@ use tokio::sync::{broadcast, broadcast::error::RecvError};
 use tokio_stream::wrappers::BroadcastStream;
 use url::Url;
 
-use crate::hass_client::{
-    responses::{
-        Area, AreaRegistryList, ColorMode, DeviceRegistryList, Entity, EntityRegistryList,
-        StateAttributes, StateLightAttributes, StateMediaPlayerAttributes, StateWeatherAttributes,
-        StatesList, WeatherCondition,
+use crate::{
+    hass_client::{
+        responses::{
+            Area, AreaRegistryList, CallServiceResponse, ColorMode, DeviceRegistryList, Entity,
+            EntityRegistryList, StateAttributes, StateLightAttributes, StateMediaPlayerAttributes,
+            StateWeatherAttributes, StatesList, WeatherCondition,
+        },
+        CallServiceRequest, CallServiceRequestData, CallServiceRequestLight,
+        CallServiceRequestLightTurnOn, CallServiceRequestTarget, Event, HassRequestKind,
     },
-    Event, HassRequestKind,
+    widgets::colour_picker::clamp_to_u8,
 };
 
 #[allow(dead_code)]
@@ -127,6 +131,31 @@ impl Oracle {
             .map(|_| ())
     }
 
+    pub fn fetch_light(&self, entity_id: &'static str) -> Option<Light> {
+        self.lights.lock().unwrap().get(entity_id).cloned()
+    }
+
+    pub async fn update_light(
+        &self,
+        entity_id: &'static str,
+        hue: f32,
+        saturation: f32,
+        brightness: f32,
+    ) {
+        let _res = self
+            .client
+            .request::<CallServiceResponse>(HassRequestKind::CallService(CallServiceRequest {
+                target: Some(CallServiceRequestTarget { entity_id }),
+                data: CallServiceRequestData::Light(CallServiceRequestLight::TurnOn(
+                    CallServiceRequestLightTurnOn {
+                        hs_color: (hue, saturation * 100.),
+                        brightness: clamp_to_u8(brightness),
+                    },
+                )),
+            }))
+            .await;
+    }
+
     pub fn spawn_worker(self: Arc<Self>) {
         tokio::spawn(async move {
             let mut recv = self.client.subscribe();
@@ -153,6 +182,12 @@ impl Oracle {
                                         state_changed.new_state.state.as_ref(),
                                         attrs,
                                     );
+                            }
+                            StateAttributes::Light(attrs) => {
+                                self.lights.lock().unwrap().insert(
+                                    Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
+                                    Light::from(attrs.clone()),
+                                );
                             }
                             _ => {
                                 // TODO
@@ -253,7 +288,7 @@ pub struct Light {
     pub brightness: Option<f32>,
     pub color_temp_kelvin: Option<u16>,
     pub color_temp: Option<u16>,
-    pub xy_color: Option<(f32, f32)>,
+    pub hs_color: Option<(f32, f32)>,
 }
 
 impl From<StateLightAttributes<'_>> for Light {
@@ -271,7 +306,7 @@ impl From<StateLightAttributes<'_>> for Light {
             brightness: value.brightness,
             color_temp_kelvin: value.color_temp_kelvin,
             color_temp: value.color_temp,
-            xy_color: value.xy_color,
+            hs_color: value.hs_color,
         }
     }
 }

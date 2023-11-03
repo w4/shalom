@@ -2782,6 +2782,7 @@ dependencies = [
  "keyframe",
  "lru 0.12.0",
  "once_cell",
+ "palette",
  "reqwest",
  "serde",
  "serde_json",
