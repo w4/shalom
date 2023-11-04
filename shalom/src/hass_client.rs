@@ -372,7 +372,7 @@ pub mod responses {
         Deserialize, Deserializer,
     };
     use serde_json::value::RawValue;
-    use strum::EnumString;
+    use strum::{EnumString, FromRepr};
     use yoke::Yokeable;
 
     use crate::theme::Icon;
@@ -639,7 +639,8 @@ pub mod responses {
         entity_picture: Cow<'a, str>,
     }
 
-    #[derive(Default, Deserialize, Debug, EnumString, Copy, Clone)]
+    #[derive(Default, Deserialize, Debug, EnumString, Copy, Clone, FromRepr)]
+    #[repr(u16)]
     #[serde(rename_all = "kebab-case")]
     #[strum(serialize_all = "kebab-case")]
     pub enum WeatherCondition {

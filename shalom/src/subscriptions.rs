@@ -1,8 +1,9 @@
-use std::{hash::Hash, num::NonZeroUsize, sync::Mutex};
+use std::{hash::Hash, num::NonZeroUsize};
 
 use iced::{futures::stream, subscription, widget::image, Subscription};
 use lru::LruCache;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use url::Url;
 
 pub fn download_image<I: Hash + 'static, M: 'static>(
@@ -16,7 +17,7 @@ pub fn download_image<I: Hash + 'static, M: 'static>(
     subscription::run_with_id(
         id,
         stream::once(async move {
-            if let Some(handle) = CACHE.lock().unwrap().get(&url) {
+            if let Some(handle) = CACHE.lock().get(&url) {
                 return (resp)(url, handle.clone());
             }
 
@@ -28,7 +29,7 @@ pub fn download_image<I: Hash + 'static, M: 'static>(
                 .unwrap();
             let handle = image::Handle::from_memory(bytes);
 
-            CACHE.lock().unwrap().push(url.clone(), handle.clone());
+            CACHE.lock().push(url.clone(), handle.clone());
 
             (resp)(url, handle)
         }),

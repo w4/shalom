@@ -2,13 +2,16 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{atomic::Ordering, Arc},
     time::Duration,
 };
 
+use atomic::Atomic;
+use bytemuck::NoUninit;
 use iced::futures::{future, Stream, StreamExt};
 use internment::Intern;
 use itertools::Itertools;
+use parking_lot::Mutex;
 use time::OffsetDateTime;
 use tokio::{
     sync::{broadcast, broadcast::error::RecvError},
@@ -39,7 +42,7 @@ use crate::{
 pub struct Oracle {
     client: crate::hass_client::Client,
     rooms: BTreeMap<&'static str, Room>,
-    weather: Mutex<Weather>,
+    weather: Atomic<Weather>,
     media_players: Mutex<BTreeMap<&'static str, MediaPlayer>>,
     lights: Mutex<BTreeMap<&'static str, Light>>,
     entity_updates: broadcast::Sender<Arc<str>>,
@@ -102,7 +105,7 @@ impl Oracle {
         let this = Arc::new(Self {
             client: hass_client,
             rooms,
-            weather: Mutex::new(Weather::parse_from_states(states)),
+            weather: Atomic::new(Weather::parse_from_states(states)),
             media_players: Mutex::new(media_players),
             lights: Mutex::new(lights),
             entity_updates: entity_updates.clone(),
@@ -122,7 +125,7 @@ impl Oracle {
     }
 
     pub fn current_weather(&self) -> Weather {
-        *self.weather.lock().unwrap()
+        self.weather.load(Ordering::Acquire)
     }
 
     pub fn subscribe_weather(&self) -> impl Stream<Item = ()> {
@@ -140,7 +143,7 @@ impl Oracle {
     }
 
     pub fn fetch_light(&self, entity_id: &'static str) -> Option<Light> {
-        self.lights.lock().unwrap().get(entity_id).cloned()
+        self.lights.lock().get(entity_id).cloned()
     }
 
     pub fn speaker(&self, speaker_id: &'static str) -> EloquentSpeaker<'_> {
@@ -197,7 +200,6 @@ impl Oracle {
             let mut active_media_players = self
                 .media_players
                 .lock()
-                .unwrap()
                 .iter()
                 .filter(|(_k, v)| v.is_playing())
                 .map(|(k, _v)| *k)
@@ -219,7 +221,7 @@ impl Oracle {
     }
 
     fn update_media_player_positions(&self, active_media_players: &HashSet<&'static str>) {
-        let mut media_players = self.media_players.lock().unwrap();
+        let mut media_players = self.media_players.lock();
 
         for entity_id in active_media_players {
             let Some(MediaPlayer::Speaker(speaker)) = media_players.get_mut(entity_id) else {
@@ -258,19 +260,19 @@ impl Oracle {
                             active_media_players.remove(entity_id);
                         }
 
-                        self.media_players
-                            .lock()
-                            .unwrap()
-                            .insert(entity_id, new_state);
+                        self.media_players.lock().insert(entity_id, new_state);
                     }
                     StateAttributes::Weather(attrs) => {
-                        *self.weather.lock().unwrap() = Weather::parse_from_state_and_attributes(
-                            state_changed.new_state.state.as_ref(),
-                            attrs,
+                        self.weather.store(
+                            Weather::parse_from_state_and_attributes(
+                                state_changed.new_state.state.as_ref(),
+                                attrs,
+                            ),
+                            Ordering::Release,
                         );
                     }
                     StateAttributes::Light(attrs) => {
-                        self.lights.lock().unwrap().insert(
+                        self.lights.lock().insert(
                             Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
                             Light::from((attrs.clone(), state_changed.new_state.state.as_ref())),
                         );
@@ -309,7 +311,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -327,7 +328,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -345,7 +345,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -367,7 +366,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -385,7 +383,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -403,7 +400,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -418,7 +414,6 @@ impl EloquentSpeaker<'_> {
             .oracle
             .media_players
             .lock()
-            .unwrap()
             .get_mut(self.speaker_id)
             .unwrap()
         {
@@ -649,7 +644,6 @@ impl Room {
             oracle
                 .media_players
                 .lock()
-                .unwrap()
                 .get(v.as_ref())
                 .cloned()
                 .zip(Some(v))
@@ -660,7 +654,7 @@ impl Room {
     }
 
     pub fn lights(&self, oracle: &Oracle) -> BTreeMap<&'static str, Light> {
-        let lights = oracle.lights.lock().unwrap();
+        let lights = oracle.lights.lock();
 
         self.lights
             .iter()
@@ -669,15 +663,20 @@ impl Room {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, NoUninit)]
+#[repr(C)]
 pub struct Weather {
     pub temperature: i16,
     pub high: i16,
     pub low: i16,
-    pub condition: WeatherCondition,
+    pub condition: u16,
 }
 
 impl Weather {
+    pub fn weather_condition(self) -> WeatherCondition {
+        WeatherCondition::from_repr(self.condition).unwrap_or_default()
+    }
+
     #[allow(clippy::cast_possible_truncation)]
     fn parse_from_state_and_attributes(state: &str, attributes: &StateWeatherAttributes) -> Self {
         let condition = WeatherCondition::from_str(state).unwrap_or_default();
@@ -694,7 +693,7 @@ impl Weather {
 
         Self {
             temperature: attributes.temperature.round() as i16,
-            condition,
+            condition: condition as u16,
             high,
             low,
         }

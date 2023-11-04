@@ -39,7 +39,9 @@ impl<M> WeatherCard<M> {
     fn build_conditions(&self) -> String {
         format!(
             "{}\nH:{}° L:{}°",
-            self.current_weather.condition, self.current_weather.high, self.current_weather.low,
+            self.current_weather.weather_condition(),
+            self.current_weather.high,
+            self.current_weather.low,
         )
     }
 }
@@ -151,7 +153,7 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
         });
 
         let icon_bounds = children.next().unwrap().bounds();
-        if let Some(icon) = self.current_weather.condition.icon(day_time) {
+        if let Some(icon) = self.current_weather.weather_condition().icon(day_time) {
             renderer.draw(icon.handle(), None, icon_bounds);
         }
 
