@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::{
     hass_client::MediaPlayerRepeat,
-    oracle::{Light, MediaPlayerSpeaker, Oracle},
+    oracle::{Light, MediaPlayerSpeaker, MediaPlayerSpeakerState, Oracle},
     subscriptions::download_image,
     theme::Icon,
     widgets,
@@ -100,26 +100,42 @@ impl Room {
                 None
             }
             Message::OnSpeakerVolumeChange(new) => {
-                Some(Event::SetSpeakerVolume(self.speaker.as_ref()?.0, new))
+                let (id, speaker) = self.speaker.as_mut()?;
+                speaker.volume = new;
+                Some(Event::SetSpeakerVolume(id, new))
             }
             Message::OnSpeakerPositionChange(new) => {
-                Some(Event::SetSpeakerPosition(self.speaker.as_ref()?.0, new))
+                let (id, speaker) = self.speaker.as_mut()?;
+                speaker.actual_media_position = Some(new);
+                Some(Event::SetSpeakerPosition(id, new))
             }
             Message::OnSpeakerStateChange(new) => {
-                Some(Event::SetSpeakerPlaying(self.speaker.as_ref()?.0, new))
+                let (id, speaker) = self.speaker.as_mut()?;
+                speaker.state = if new {
+                    MediaPlayerSpeakerState::Playing
+                } else {
+                    MediaPlayerSpeakerState::Paused
+                };
+                Some(Event::SetSpeakerPlaying(id, new))
             }
             Message::OnSpeakerMuteChange(new) => {
-                Some(Event::SetSpeakerMuted(self.speaker.as_ref()?.0, new))
+                let (id, speaker) = self.speaker.as_mut()?;
+                speaker.muted = new;
+                Some(Event::SetSpeakerMuted(id, new))
             }
             Message::OnSpeakerRepeatChange(new) => {
-                Some(Event::SetSpeakerRepeat(self.speaker.as_ref()?.0, new))
+                let (id, speaker) = self.speaker.as_mut()?;
+                speaker.repeat = new;
+                Some(Event::SetSpeakerRepeat(id, new))
             }
             Message::OnSpeakerNextTrack => Some(Event::SpeakerNextTrack(self.speaker.as_ref()?.0)),
             Message::OnSpeakerPreviousTrack => {
                 Some(Event::SpeakerPreviousTrack(self.speaker.as_ref()?.0))
             }
             Message::OnSpeakerShuffleChange(new) => {
-                Some(Event::SetSpeakerShuffle(self.speaker.as_ref()?.0, new))
+                let (id, speaker) = self.speaker.as_mut()?;
+                speaker.shuffle = new;
+                Some(Event::SetSpeakerShuffle(id, new))
             }
         }
     }
