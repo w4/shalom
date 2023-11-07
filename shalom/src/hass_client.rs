@@ -624,19 +624,19 @@ pub mod responses {
     #[derive(Deserialize, Debug, Clone)]
     pub struct StateCameraAttributes<'a> {
         #[serde(borrow)]
-        access_token: Cow<'a, str>,
+        pub access_token: Cow<'a, str>,
         #[serde(borrow)]
-        friendly_name: Cow<'a, str>,
+        pub friendly_name: Cow<'a, str>,
         #[serde(borrow)]
-        stream_source: Option<Cow<'a, str>>,
+        pub stream_source: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        still_image_url: Option<Cow<'a, str>>,
+        pub still_image_url: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        name: Option<Cow<'a, str>>,
+        pub name: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        id: Option<Cow<'a, str>>,
+        pub id: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        entity_picture: Cow<'a, str>,
+        pub entity_picture: Cow<'a, str>,
     }
 
     #[derive(Default, Deserialize, Debug, EnumString, Copy, Clone, FromRepr)]

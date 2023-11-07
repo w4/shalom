@@ -5,11 +5,11 @@ use std::{
 
 use iced::{
     advanced::graphics::core::Element,
-    theme::{Svg, Text},
+    theme::{Slider, Svg, Text},
     widget::{
         column as icolumn, component, container, image::Handle, row, slider, svg, text, Component,
     },
-    Alignment, Length, Renderer, Theme,
+    Alignment, Color, Length, Renderer, Theme,
 };
 
 use crate::{
@@ -188,8 +188,8 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                         .on_press(Event::ToggleShuffle),
                         mouse_area(
                             svg(Icon::Backward)
-                                .height(24)
-                                .width(24)
+                                .height(28)
+                                .width(28)
                                 .style(icon_style(false))
                         )
                         .on_press(Event::PreviousTrack),
@@ -199,27 +199,31 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                             } else {
                                 Icon::Play
                             })
-                            .height(24)
-                            .width(24)
+                            .height(42)
+                            .width(42)
                             .style(icon_style(false))
                         )
                         .on_press(Event::TogglePlaying),
                         mouse_area(
                             svg(Icon::Forward)
-                                .height(24)
-                                .width(24)
+                                .height(28)
+                                .width(28)
                                 .style(icon_style(false))
                         )
                         .on_press(Event::NextTrack),
                         mouse_area(
-                            svg(Icon::Repeat)
-                                .height(24)
-                                .width(24)
-                                .style(icon_style(self.device.repeat != MediaPlayerRepeat::Off)),
+                            svg(match self.device.repeat {
+                                MediaPlayerRepeat::Off | MediaPlayerRepeat::All => Icon::Repeat,
+                                MediaPlayerRepeat::One => Icon::Repeat1,
+                            })
+                            .height(28)
+                            .width(28)
+                            .style(icon_style(self.device.repeat != MediaPlayerRepeat::Off)),
                         )
                         .on_press(Event::ToggleRepeat),
                     ]
-                    .spacing(14),
+                    .spacing(14)
+                    .align_items(Alignment::Center),
                     row![
                         text(format_time(position))
                             .style(Text::Color(SLATE_400))
@@ -229,7 +233,8 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                             position.as_secs_f64(),
                             Event::PositionChange
                         )
-                        .on_release(Event::OnPositionRelease),
+                        .on_release(Event::OnPositionRelease)
+                        .style(Slider::Custom(Box::new(SliderStyle))),
                         text(format_time(self.device.media_duration.unwrap_or_default()))
                             .style(Text::Color(SLATE_400))
                             .size(12),
@@ -255,7 +260,8 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                     slider(0.0..=1.0, volume, Event::VolumeChange)
                         .width(128)
                         .step(0.01)
-                        .on_release(Event::OnVolumeRelease),
+                        .on_release(Event::OnVolumeRelease)
+                        .style(Slider::Custom(Box::new(SliderStyle))),
                 ]
                 .align_items(Alignment::Center)
                 .width(Length::FillPortion(4))
@@ -309,6 +315,59 @@ fn format_time(duration: Duration) -> impl Display {
     let seconds = secs % 60;
 
     format!("{minutes:02}:{seconds:02}")
+}
+
+struct SliderStyle;
+
+impl slider::StyleSheet for SliderStyle {
+    type Style = Theme;
+
+    fn active(&self, style: &Self::Style) -> slider::Appearance {
+        let palette = style.extended_palette();
+
+        let handle = slider::Handle {
+            shape: slider::HandleShape::Rectangle {
+                width: 0,
+                border_radius: 0.0.into(),
+            },
+            color: Color::TRANSPARENT,
+            border_color: Color::TRANSPARENT,
+            border_width: 0.0,
+        };
+
+        slider::Appearance {
+            rail: slider::Rail {
+                colors: (palette.primary.base.color, palette.secondary.base.color),
+                width: 4.0,
+                border_radius: 4.0.into(),
+            },
+            handle,
+        }
+    }
+
+    fn hovered(&self, style: &Self::Style) -> slider::Appearance {
+        let palette = style.extended_palette();
+
+        let handle = slider::Handle {
+            shape: slider::HandleShape::Circle { radius: 6.0 },
+            color: palette.background.base.color,
+            border_color: palette.primary.base.color,
+            border_width: 1.0,
+        };
+
+        slider::Appearance {
+            rail: slider::Rail {
+                colors: (palette.primary.base.color, palette.secondary.base.color),
+                width: 4.0,
+                border_radius: 4.0.into(),
+            },
+            handle,
+        }
+    }
+
+    fn dragging(&self, style: &Self::Style) -> slider::Appearance {
+        self.hovered(style)
+    }
 }
 
 #[derive(Copy, Clone)]

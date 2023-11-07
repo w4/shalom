@@ -67,8 +67,7 @@ impl<Event: Clone> Component<Event, Renderer> for ColourPicker<Event> {
                 Message::MouseUp,
             ))
             .height(192)
-            .width(192)
-            .into(),
+            .width(192),
         );
 
         let hue_slider = forced_rounded(
@@ -78,8 +77,7 @@ impl<Event: Clone> Component<Event, Renderer> for ColourPicker<Event> {
                 Message::MouseUp,
             ))
             .height(192)
-            .width(32)
-            .into(),
+            .width(32),
         );
 
         Row::new()

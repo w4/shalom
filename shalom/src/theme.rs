@@ -43,6 +43,7 @@ pub enum Icon {
     Play,
     Pause,
     Repeat,
+    Repeat1,
     Cloud,
     ClearNight,
     Fog,
@@ -95,6 +96,7 @@ impl Icon {
             Self::ClearDay => image!("clear-day"),
             Self::Wind => image!("wind"),
             Self::Shuffle => image!("shuffle"),
+            Self::Repeat1 => image!("repeat-1"),
         }
     }
 }

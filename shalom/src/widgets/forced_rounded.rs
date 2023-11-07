@@ -15,8 +15,12 @@ use iced::{
     Background, Color, Event, Length, Point, Rectangle, Size,
 };
 
-pub fn forced_rounded<'a, M: 'a, R>(element: iced::Element<'a, M, R>) -> ForcedRounded<'a, M, R> {
-    ForcedRounded { element }
+pub fn forced_rounded<'a, M: 'a, R>(
+    element: impl Into<iced::Element<'a, M, R>>,
+) -> ForcedRounded<'a, M, R> {
+    ForcedRounded {
+        element: element.into(),
+    }
 }
 
 pub struct ForcedRounded<'a, M, R> {

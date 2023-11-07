@@ -1,18 +1,20 @@
-use std::{any::TypeId, sync::Arc};
+use std::{any::TypeId, collections::BTreeMap, sync::Arc};
 
 use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     futures::StreamExt,
     subscription,
-    widget::{column, scrollable, text, Column, Row},
+    widget::{column, container, image, scrollable, text, vertical_space, Column, Row},
     Font, Renderer, Subscription,
 };
 use itertools::Itertools;
 use time::OffsetDateTime;
+use url::Url;
 
 use crate::{
     oracle::{Oracle, Weather},
+    subscriptions::download_image,
     theme::Image,
     widgets::image_card,
 };
@@ -21,12 +23,24 @@ use crate::{
 pub struct Omni {
     oracle: Arc<Oracle>,
     weather: Weather,
+    cameras: BTreeMap<&'static str, CameraImage>,
+}
+
+#[derive(Debug)]
+pub enum CameraImage {
+    Unresolved(Url, Option<iced::widget::image::Handle>),
+    Resolved(Url, iced::widget::image::Handle),
 }
 
 impl Omni {
     pub fn new(oracle: Arc<Oracle>) -> Self {
         Self {
             weather: oracle.current_weather(),
+            cameras: oracle
+                .cameras()
+                .into_iter()
+                .map(|(k, v)| (k, CameraImage::Unresolved(v.entity_picture, None)))
+                .collect(),
             oracle,
         }
     }
@@ -43,6 +57,35 @@ impl Omni {
             Message::OpenRoom(room) => Some(Event::OpenRoom(room)),
             Message::UpdateWeather => {
                 self.weather = self.oracle.current_weather();
+                None
+            }
+            Message::UpdateCameras => {
+                self.cameras = self
+                    .oracle
+                    .cameras()
+                    .into_iter()
+                    .map(|(k, v)| match self.cameras.remove(k) {
+                        Some(CameraImage::Resolved(old_url, old_handle))
+                            if old_url != v.entity_picture =>
+                        {
+                            (
+                                k,
+                                CameraImage::Unresolved(v.entity_picture, Some(old_handle)),
+                            )
+                        }
+                        Some(CameraImage::Unresolved(old_url, old_handle))
+                            if old_url != v.entity_picture =>
+                        {
+                            (k, CameraImage::Unresolved(v.entity_picture, old_handle))
+                        }
+                        Some(v) => (k, v),
+                        None => (k, CameraImage::Unresolved(v.entity_picture, None)),
+                    })
+                    .collect();
+                None
+            }
+            Message::CameraImageDownloaded(id, url, handle) => {
+                self.cameras.insert(id, CameraImage::Resolved(url, handle));
                 None
             }
         }
@@ -68,6 +111,22 @@ impl Omni {
             // .width(Length::FillPortion(1))
         };
 
+        let cameras = self
+            .cameras
+            .values()
+            .map(|v| match v {
+                CameraImage::Unresolved(_, Some(handle)) | CameraImage::Resolved(_, handle) => {
+                    Element::from(image(handle.clone()).width(512.).height(288.))
+                }
+                CameraImage::Unresolved(..) => {
+                    Element::from(container(vertical_space(0)).width(512.).height(288.))
+                }
+            })
+            .chunks(2)
+            .into_iter()
+            .map(|children| children.into_iter().fold(Row::new(), Row::push))
+            .fold(Column::new(), Column::push);
+
         let rooms = self
             .oracle
             .rooms()
@@ -82,6 +141,7 @@ impl Omni {
                 greeting,
                 crate::widgets::cards::weather::WeatherCard::new(self.weather),
                 rooms,
+                cameras,
             ]
             .spacing(20)
             .padding(40),
@@ -91,13 +151,38 @@ impl Omni {
 
     pub fn subscription(&self) -> Subscription<Message> {
         pub struct WeatherSubscription;
+        pub struct CameraSubscription;
 
-        subscription::run_with_id(
+        let weather_subscription = subscription::run_with_id(
             TypeId::of::<WeatherSubscription>(),
             self.oracle
                 .subscribe_weather()
                 .map(|()| Message::UpdateWeather),
-        )
+        );
+
+        let camera_subscription = subscription::run_with_id(
+            TypeId::of::<CameraSubscription>(),
+            self.oracle
+                .subscribe_all_cameras()
+                .map(|()| Message::UpdateCameras),
+        );
+
+        let camera_image_downloads =
+            Subscription::batch(self.cameras.iter().filter_map(|(k, v)| {
+                if let CameraImage::Unresolved(url, _) = v {
+                    Some(download_image(*k, url.clone(), |id, url, handle| {
+                        Message::CameraImageDownloaded(id, url, handle)
+                    }))
+                } else {
+                    None
+                }
+            }));
+
+        Subscription::batch([
+            weather_subscription,
+            camera_subscription,
+            camera_image_downloads,
+        ])
     }
 }
 
@@ -123,4 +208,6 @@ pub enum Event {
 pub enum Message {
     OpenRoom(&'static str),
     UpdateWeather,
+    UpdateCameras,
+    CameraImageDownloaded(&'static str, Url, iced::widget::image::Handle),
 }

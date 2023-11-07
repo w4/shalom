@@ -6,10 +6,10 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use url::Url;
 
-pub fn download_image<I: Hash + 'static, M: 'static>(
+pub fn download_image<I: Hash + Copy + Send + 'static, M: 'static>(
     id: I,
     url: Url,
-    resp: fn(Url, image::Handle) -> M,
+    resp: fn(I, Url, image::Handle) -> M,
 ) -> Subscription<M> {
     static CACHE: Lazy<Mutex<LruCache<Url, image::Handle>>> =
         Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(10).unwrap())));
@@ -18,7 +18,7 @@ pub fn download_image<I: Hash + 'static, M: 'static>(
         id,
         stream::once(async move {
             if let Some(handle) = CACHE.lock().get(&url) {
-                return (resp)(url, handle.clone());
+                return (resp)(id, url, handle.clone());
             }
 
             let bytes = reqwest::get(url.clone())
@@ -31,7 +31,7 @@ pub fn download_image<I: Hash + 'static, M: 'static>(
 
             CACHE.lock().push(url.clone(), handle.clone());
 
-            (resp)(url, handle)
+            (resp)(id, url, handle)
         }),
     )
 }

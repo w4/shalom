@@ -25,8 +25,8 @@ use crate::{
     hass_client::{
         responses::{
             Area, AreaRegistryList, ColorMode, DeviceRegistryList, Entity, EntityRegistryList,
-            StateAttributes, StateLightAttributes, StateMediaPlayerAttributes,
-            StateWeatherAttributes, StatesList, WeatherCondition,
+            StateAttributes, StateCameraAttributes, StateLightAttributes,
+            StateMediaPlayerAttributes, StateWeatherAttributes, StatesList, WeatherCondition,
         },
         CallServiceRequestData, CallServiceRequestLight, CallServiceRequestLightTurnOn,
         CallServiceRequestMediaPlayer, CallServiceRequestMediaPlayerMediaSeek,
@@ -45,6 +45,7 @@ pub struct Oracle {
     weather: Atomic<Weather>,
     media_players: Mutex<BTreeMap<&'static str, MediaPlayer>>,
     lights: Mutex<BTreeMap<&'static str, Light>>,
+    cameras: Mutex<BTreeMap<&'static str, Camera>>,
     entity_updates: broadcast::Sender<Arc<str>>,
 }
 
@@ -81,6 +82,7 @@ impl Oracle {
 
         let mut media_players = BTreeMap::new();
         let mut lights = BTreeMap::new();
+        let mut cameras = BTreeMap::new();
 
         for state in &states.0 {
             match &state.attributes {
@@ -96,6 +98,12 @@ impl Oracle {
                         Light::from((attr.clone(), state.state.as_ref())),
                     );
                 }
+                StateAttributes::Camera(attr) => {
+                    cameras.insert(
+                        Intern::<str>::from(state.entity_id.as_ref()).as_ref(),
+                        Camera::new(attr, &hass_client.base),
+                    );
+                }
                 _ => {}
             }
         }
@@ -109,6 +117,7 @@ impl Oracle {
             media_players: Mutex::new(media_players),
             lights: Mutex::new(lights),
             entity_updates: entity_updates.clone(),
+            cameras: Mutex::new(cameras),
         });
 
         this.clone().spawn_worker();
@@ -132,6 +141,17 @@ impl Oracle {
         BroadcastStream::new(self.entity_updates.subscribe())
             .filter_map(|v| future::ready(v.ok()))
             .filter(|v| future::ready(v.starts_with("weather.")))
+            .map(|_| ())
+    }
+
+    pub fn cameras(&self) -> BTreeMap<&'static str, Camera> {
+        (*self.cameras.lock()).clone()
+    }
+
+    pub fn subscribe_all_cameras(&self) -> impl Stream<Item = ()> {
+        BroadcastStream::new(self.entity_updates.subscribe())
+            .filter_map(|v| future::ready(v.ok()))
+            .filter(|v| future::ready(v.starts_with("camera.")))
             .map(|_| ())
     }
 
@@ -275,6 +295,12 @@ impl Oracle {
                         self.lights.lock().insert(
                             Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
                             Light::from((attrs.clone(), state_changed.new_state.state.as_ref())),
+                        );
+                    }
+                    StateAttributes::Camera(attrs) => {
+                        self.cameras.lock().insert(
+                            Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref(),
+                            Camera::new(attrs, &self.client.base),
                         );
                     }
                     _ => {
@@ -470,6 +496,21 @@ fn build_room(
     };
 
     (area, room)
+}
+
+#[derive(Clone, Debug)]
+pub struct Camera {
+    pub name: Box<str>,
+    pub entity_picture: Url,
+}
+
+impl Camera {
+    pub fn new(value: &StateCameraAttributes, base: &Url) -> Self {
+        Self {
+            name: value.friendly_name.to_string().into_boxed_str(),
+            entity_picture: base.join(&value.entity_picture).unwrap(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

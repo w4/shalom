@@ -209,7 +209,9 @@ impl Room {
                 .and_then(|(_, v)| v.entity_picture.as_ref()),
             &self.now_playing_image,
         ) {
-            download_image(uri.clone(), uri.clone(), Message::NowPlayingImageLoaded)
+            download_image("now-playing", uri.clone(), |_, url, handle| {
+                Message::NowPlayingImageLoaded(url, handle)
+            })
         } else {
             Subscription::none()
         };
