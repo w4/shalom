@@ -12,18 +12,11 @@ mod widgets;
 use std::sync::Arc;
 
 use iced::{
-    alignment::{Horizontal, Vertical},
-    widget::{column, container, row, scrollable, svg, Column},
-    window, Application, Command, ContentFit, Element, Length, Renderer, Settings, Subscription,
-    Theme,
+    widget::{column, Column},
+    window, Application, Command, Element, Renderer, Settings, Subscription, Theme,
 };
 
-use crate::{
-    config::Config,
-    oracle::Oracle,
-    theme::{Icon, Image},
-    widgets::{context_menu::ContextMenu, mouse_area::mouse_area},
-};
+use crate::{config::Config, oracle::Oracle, theme::Image, widgets::context_menu::ContextMenu};
 
 pub struct Shalom {
     page: ActivePage,
@@ -33,14 +26,6 @@ pub struct Shalom {
 }
 
 impl Shalom {
-    fn is_on_home_page(&self) -> bool {
-        match (&self.page, self.home_room) {
-            (ActivePage::Omni(_), None) => true,
-            (ActivePage::Room(r), Some(id)) if r.room_id() == id => true,
-            _ => false,
-        }
-    }
-
     fn build_home_route(&self) -> ActivePage {
         self.home_room.map_or_else(
             || self.build_omni_route(),
@@ -213,6 +198,10 @@ impl Application for Shalom {
                         Message::UpdateLightResult,
                     )
                 }
+                Some(pages::room::Event::Exit) => {
+                    self.page = self.build_omni_route();
+                    Command::none()
+                }
                 None => Command::none(),
             },
             (Message::LightControlMenu(e), _, Some(ActiveContextMenu::LightControl(menu))) => {
@@ -244,59 +233,7 @@ impl Application for Shalom {
             ActivePage::Omni(omni) => omni.view().map(Message::OmniEvent),
         };
 
-        let mut content = Column::new().push(scrollable(page_content));
-
-        let (show_back, show_home) = match &self.page {
-            _ if self.is_on_home_page() => (true, false),
-            ActivePage::Loading => (false, false),
-            ActivePage::Omni(_) => (false, true),
-            ActivePage::Room(_) => (true, true),
-        };
-
-        let back = mouse_area(
-            svg(Icon::Back)
-                .height(32)
-                .width(32)
-                .content_fit(ContentFit::None),
-        )
-        .on_press(Message::OpenOmniPage);
-        let home = mouse_area(
-            svg(Icon::Home)
-                .height(32)
-                .width(32)
-                .content_fit(ContentFit::None),
-        )
-        .on_press(Message::OpenHomePage);
-
-        let navigation = match (show_back, show_home) {
-            (true, true) => Some(Element::from(
-                row![
-                    back,
-                    container(home)
-                        .width(Length::Fill)
-                        .align_x(Horizontal::Right),
-                ]
-                .height(32),
-            )),
-            (false, true) => Some(Element::from(
-                row![container(home)
-                    .width(Length::Fill)
-                    .align_x(Horizontal::Right),]
-                .height(32),
-            )),
-            (true, false) => Some(Element::from(back)),
-            (false, false) => None,
-        };
-
-        if let Some(navigation) = navigation {
-            content = content.push(
-                container(navigation)
-                    .height(Length::Fill)
-                    .width(Length::Fill)
-                    .align_y(Vertical::Bottom)
-                    .padding(40),
-            );
-        }
+        let content = Column::new().push(page_content);
 
         if let Some(context_menu) = &self.context_menu {
             let context_menu = match context_menu {

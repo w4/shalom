@@ -4,9 +4,9 @@ use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     futures::StreamExt,
-    subscription,
-    widget::{container, image::Handle, text, Column, Row},
-    Font, Renderer, Subscription,
+    subscription, theme,
+    widget::{container, image::Handle, row, text, Column, Row},
+    Color, Font, Length, Renderer, Subscription,
 };
 use url::Url;
 
@@ -16,7 +16,11 @@ use crate::{
     subscriptions::download_image,
     theme::Icon,
     widgets,
-    widgets::colour_picker::colour_from_hsb,
+    widgets::{
+        colour_picker::colour_from_hsb,
+        image_background::image_background,
+        room_navigation::{Page, RoomNavigation},
+    },
 };
 
 #[derive(Debug)]
@@ -27,6 +31,7 @@ pub struct Room {
     speaker: Option<(&'static str, MediaPlayerSpeaker)>,
     now_playing_image: Option<Handle>,
     lights: BTreeMap<&'static str, Light>,
+    current_page: Page,
 }
 
 impl Room {
@@ -43,6 +48,7 @@ impl Room {
             speaker,
             now_playing_image: None,
             lights,
+            current_page: Page::Listen,
         }
     }
 
@@ -137,15 +143,23 @@ impl Room {
                 speaker.shuffle = new;
                 Some(Event::SetSpeakerShuffle(id, new))
             }
+            Message::ChangePage(page) => {
+                self.current_page = page;
+                None
+            }
+            Message::Exit => Some(Event::Exit),
         }
     }
 
     pub fn view(&self) -> Element<'_, Message, Renderer> {
-        let header = text(self.room.name.as_ref()).size(60).font(Font {
-            weight: Weight::Bold,
-            stretch: Stretch::Condensed,
-            ..Font::with_name("Helvetica Neue")
-        });
+        let header = text(self.room.name.as_ref())
+            .size(60)
+            .font(Font {
+                weight: Weight::Bold,
+                stretch: Stretch::Condensed,
+                ..Font::with_name("Helvetica Neue")
+            })
+            .style(theme::Text::Color(Color::WHITE));
 
         let light = |id, light: &Light| {
             let mut toggle_card = widgets::toggle_card::toggle_card(
@@ -199,7 +213,18 @@ impl Room {
         .spacing(10);
         col = col.push(lights);
 
-        col.into()
+        row![
+            RoomNavigation::new(self.current_page)
+                .width(Length::FillPortion(2))
+                .on_change(Message::ChangePage)
+                .on_exit(Message::Exit),
+            image_background(crate::theme::Image::Sunset, col.width(Length::Fill).into())
+                .width(Length::FillPortion(15))
+                .height(Length::Fill),
+        ]
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -256,6 +281,7 @@ pub enum Event {
     SetSpeakerRepeat(&'static str, MediaPlayerRepeat),
     SpeakerNextTrack(&'static str),
     SpeakerPreviousTrack(&'static str),
+    Exit,
 }
 
 #[derive(Clone, Debug)]
@@ -273,4 +299,6 @@ pub enum Message {
     OnSpeakerRepeatChange(MediaPlayerRepeat),
     OnSpeakerNextTrack,
     OnSpeakerPreviousTrack,
+    ChangePage(Page),
+    Exit,
 }

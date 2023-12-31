@@ -57,7 +57,9 @@ pub enum Icon {
     Snow,
     ClearDay,
     Wind,
+    Hvac,
     Shuffle,
+    SpeakerFull,
 }
 
 impl Icon {
@@ -77,6 +79,7 @@ impl Icon {
             Self::Hamburger => image!("hamburger"),
             Self::Speaker => image!("speaker"),
             Self::SpeakerMuted => image!("speaker-muted"),
+            Self::SpeakerFull => image!("speaker-full"),
             Self::Backward => image!("backward"),
             Self::Forward => image!("forward"),
             Self::Play => image!("play"),
@@ -94,6 +97,7 @@ impl Icon {
             Self::Rain => image!("rain"),
             Self::Snow => image!("snow"),
             Self::ClearDay => image!("clear-day"),
+            Self::Hvac => image!("hvac"),
             Self::Wind => image!("wind"),
             Self::Shuffle => image!("shuffle"),
             Self::Repeat1 => image!("repeat-1"),
@@ -114,6 +118,7 @@ pub enum Image {
     Bathroom,
     Bedroom,
     DiningRoom,
+    Sunset,
 }
 
 impl Image {
@@ -137,6 +142,7 @@ impl Image {
             Image::Bathroom => image!("../../assets/images/bathroom.jpg"),
             Image::Bedroom => image!("../../assets/images/bedroom.jpg"),
             Image::DiningRoom => image!("../../assets/images/dining_room.jpg"),
+            Image::Sunset => image!("../../assets/images/sunset-blur.jpg"),
         }
     }
 

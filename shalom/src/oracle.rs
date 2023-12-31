@@ -616,7 +616,7 @@ impl From<(StateLightAttributes<'_>, &str)> for Light {
             supported_color_modes: value.supported_color_modes.clone(),
             mode: value.mode.map(Cow::into_owned).map(Box::from),
             dynamics: value.dynamics.map(Cow::into_owned).map(Box::from),
-            friendly_name: Box::from(value.friendly_name.as_ref()),
+            friendly_name: Box::from(value.friendly_name.as_deref().unwrap_or("unknown")),
             color_mode: value.color_mode,
             brightness: value.brightness,
             color_temp_kelvin: value.color_temp_kelvin,

@@ -6,10 +6,10 @@ use iced::{
         image::{self, Image},
         row, text, vertical_space, Component,
     },
-    Alignment, Background, Renderer, Theme,
+    Alignment, Background, Color, Renderer, Theme,
 };
 
-use crate::theme::colours::SLATE_400;
+use crate::theme::colours::{SLATE_200, SLATE_400};
 
 pub fn track_card(artist: String, song: String, image: Option<image::Handle>) -> TrackCard {
     TrackCard {
@@ -40,7 +40,7 @@ impl<M> Component<M, Renderer> for TrackCard {
             } else {
                 Element::from(container(vertical_space(0)).width(64).height(64).style(
                     |_t: &Theme| container::Appearance {
-                        background: Some(Background::Color(SLATE_400)),
+                        background: Some(Background::Color(SLATE_200)),
                         ..container::Appearance::default()
                     },
                 ))
@@ -49,7 +49,7 @@ impl<M> Component<M, Renderer> for TrackCard {
         row![
             image,
             icolumn![
-                text(&self.song).size(14),
+                text(&self.song).size(14).style(Text::Color(Color::WHITE)),
                 text(&self.artist).style(Text::Color(SLATE_400)).size(14)
             ]
         ]

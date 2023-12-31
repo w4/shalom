@@ -5,18 +5,18 @@ use std::{
 
 use iced::{
     advanced::graphics::core::Element,
-    theme::{Slider, Svg, Text},
+    theme::{Container, Slider, Svg, Text},
     widget::{
         column as icolumn, component, container, image::Handle, row, slider, svg, text, Component,
     },
-    Alignment, Color, Length, Renderer, Theme,
+    Alignment, Background, Color, Length, Renderer, Theme,
 };
 
 use crate::{
     hass_client::MediaPlayerRepeat,
     oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState},
     theme::{
-        colours::{SKY_500, SLATE_400, SLATE_600},
+        colours::{SKY_500, SLATE_400},
         Icon,
     },
     widgets::mouse_area::mouse_area,
@@ -274,7 +274,8 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
         .width(self.width)
         .center_x()
         .center_y()
-        // .style(Container::Custom(Box::new(Style::Inactive)))
+        .style(Container::Custom(Box::new(Style::Inactive)))
+        .padding(20)
         .into()
     }
 }
@@ -376,19 +377,22 @@ pub enum Style {
     Inactive,
 }
 
-// impl container::StyleSheet for Style {
-//     type Style = Theme;
-//
-//     fn appearance(&self, style: &Self::Style) -> container::Appearance {
-//         container::Appearance {
-//             text_color: None,
-//             background: Some(Background::Color(SLATE_200)),
-//             border_radius: Default::default(),
-//             border_width: 0.0,
-//             border_color: Default::default(),
-//         }
-//     }
-// }
+impl container::StyleSheet for Style {
+    type Style = Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        container::Appearance {
+            text_color: None,
+            background: Some(Background::Color(Color {
+                a: 0.8,
+                ..Color::BLACK
+            })),
+            border_radius: 10.0.into(),
+            border_width: 0.,
+            border_color: Color::default(),
+        }
+    }
+}
 
 impl svg::StyleSheet for Style {
     type Style = Theme;
@@ -396,7 +400,7 @@ impl svg::StyleSheet for Style {
     fn appearance(&self, _style: &Self::Style) -> svg::Appearance {
         let color = match self {
             Self::Active => SKY_500,
-            Self::Inactive => SLATE_600,
+            Self::Inactive => Color::WHITE,
         };
 
         svg::Appearance { color: Some(color) }

@@ -760,7 +760,7 @@ pub mod responses {
         #[serde(borrow)]
         pub dynamics: Option<Cow<'a, str>>,
         #[serde(borrow)]
-        pub friendly_name: Cow<'a, str>,
+        pub friendly_name: Option<Cow<'a, str>>,
         pub color_mode: Option<ColorMode>,
         pub brightness: Option<f32>,
         pub color_temp_kelvin: Option<u16>,
