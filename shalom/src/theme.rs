@@ -1,4 +1,4 @@
-use ::image::{GenericImageView, Pixel, Rgba, RgbaImage};
+use ::image::{imageops, GenericImageView, Pixel, Rgba, RgbaImage};
 use iced::{
     advanced::svg::Handle,
     widget::{image, svg},
@@ -201,4 +201,54 @@ pub fn blur(img: &RgbaImage, radius: usize) -> RgbaImage {
     }
 
     image
+}
+
+pub fn trim_transparent_padding(mut image: RgbaImage) -> RgbaImage {
+    let (width, height) = image.dimensions();
+    let mut top = 0;
+    let mut bottom = height;
+    let mut left = 0;
+    let mut right = width;
+
+    'outer: for y in 0..height {
+        for x in 0..width {
+            let pixel = image.get_pixel(x, y);
+            if pixel[3] != 0 {
+                top = y;
+                break 'outer;
+            }
+        }
+    }
+
+    'outer: for y in (top..height).rev() {
+        for x in 0..width {
+            let pixel = image.get_pixel(x, y);
+            if pixel[3] != 0 {
+                bottom = y + 1;
+                break 'outer;
+            }
+        }
+    }
+
+    'outer: for x in 0..width {
+        for y in top..bottom {
+            let pixel = image.get_pixel(x, y);
+            if pixel[3] != 0 {
+                left = x;
+                break 'outer;
+            }
+        }
+    }
+
+    'outer: for x in (left..width).rev() {
+        for y in top..bottom {
+            let pixel = image.get_pixel(x, y);
+            if pixel[3] != 0 {
+                right = x + 1;
+                break 'outer;
+            }
+        }
+    }
+
+    imageops::crop(&mut image, left, top, right - left, bottom - top).to_image()
 }

@@ -12,7 +12,7 @@ use crate::{
     hass_client::MediaPlayerRepeat,
     oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState, Oracle, Room},
     subscriptions::{download_image, find_fanart_urls, find_musicbrainz_artist, MaybePendingImage},
-    theme::darken_image,
+    theme::{darken_image, trim_transparent_padding},
     widgets,
 };
 
@@ -209,7 +209,11 @@ impl Listen {
             };
 
         let logo_subscription = if let Some(MaybePendingImage::Loading(url)) = &self.artist_logo {
-            download_image(url.clone(), identity, Message::ArtistLogoDownloaded)
+            download_image(
+                url.clone(),
+                trim_transparent_padding,
+                Message::ArtistLogoDownloaded,
+            )
         } else {
             Subscription::none()
         };

@@ -1,6 +1,5 @@
 use std::num::NonZeroUsize;
 
-use ::image::GenericImageView;
 use iced::{futures::stream, subscription, widget::image, Subscription};
 use lru::LruCache;
 use once_cell::sync::Lazy;
@@ -51,10 +50,10 @@ pub fn download_image<M: 'static>(
             let handle = tokio::task::spawn_blocking(move || {
                 eprintln!("parsing image");
                 let img = ::image::load_from_memory(&bytes).unwrap();
-                let (h, w) = img.dimensions();
                 eprintln!("post processing");
-                let data = post_process(img.into_rgba8()).into_raw();
-                image::Handle::from_pixels(h, w, data)
+                let data = post_process(img.into_rgba8());
+                let (h, w) = data.dimensions();
+                image::Handle::from_pixels(h, w, data.into_raw())
             })
             .await
             .unwrap();
