@@ -227,17 +227,20 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
                     row![
                         text(format_time(position))
                             .style(Text::Color(SLATE_400))
-                            .size(12),
+                            .size(12)
+                            .width(Length::FillPortion(10)),
                         slider(
                             0.0..=self.device.media_duration.unwrap_or_default().as_secs_f64(),
                             position.as_secs_f64(),
                             Event::PositionChange
                         )
                         .on_release(Event::OnPositionRelease)
-                        .style(Slider::Custom(Box::new(SliderStyle))),
+                        .style(Slider::Custom(Box::new(SliderStyle)))
+                        .width(Length::FillPortion(80)),
                         text(format_time(self.device.media_duration.unwrap_or_default()))
                             .style(Text::Color(SLATE_400))
-                            .size(12),
+                            .size(12)
+                            .width(Length::FillPortion(10)),
                     ]
                     .spacing(14)
                     .align_items(Alignment::Center),
