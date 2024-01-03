@@ -186,10 +186,15 @@ impl Room {
 
         let mut col = Column::new().spacing(20).padding(40).push(header);
 
-        if let Some((_, speaker)) = self.speaker.clone() {
-            col = col.push(
-                container(
-                    widgets::media_player::media_player(speaker, self.now_playing_image.clone())
+        match self.current_page {
+            Page::Climate => {}
+            Page::Listen => {
+                if let Some((_, speaker)) = self.speaker.clone() {
+                    col = col.push(container(
+                        widgets::media_player::media_player(
+                            speaker,
+                            self.now_playing_image.clone(),
+                        )
                         .on_volume_change(Message::OnSpeakerVolumeChange)
                         .on_mute_change(Message::OnSpeakerMuteChange)
                         .on_repeat_change(Message::OnSpeakerRepeatChange)
@@ -198,20 +203,21 @@ impl Room {
                         .on_next_track(Message::OnSpeakerNextTrack)
                         .on_previous_track(Message::OnSpeakerPreviousTrack)
                         .on_shuffle_change(Message::OnSpeakerShuffleChange),
+                    ));
+                }
+            }
+            Page::Lights => {
+                let lights = Row::with_children(
+                    self.lights
+                        .iter()
+                        .map(|(id, item)| light(*id, item))
+                        .map(Element::from)
+                        .collect::<Vec<_>>(),
                 )
-                .padding([12, 0, 24, 0]),
-            );
+                .spacing(10);
+                col = col.push(lights);
+            }
         }
-
-        let lights = Row::with_children(
-            self.lights
-                .iter()
-                .map(|(id, item)| light(*id, item))
-                .map(Element::from)
-                .collect::<Vec<_>>(),
-        )
-        .spacing(10);
-        col = col.push(lights);
 
         row![
             RoomNavigation::new(self.current_page)

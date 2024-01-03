@@ -203,39 +203,41 @@ impl container::StyleSheet for Style {
     type Style = Theme;
 
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+        let c = |c| Color { a: 0.8, ..c };
+
         match self {
             Style::Disabled => container::Appearance {
-                text_color: Some(Color::BLACK),
-                background: Some(Background::Color(SLATE_600)),
-                border_radius: 5.0.into(),
+                text_color: Some(Color::WHITE),
+                background: Some(Background::Color(c(SLATE_600))),
+                border_radius: 10.0.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },
             Style::Inactive => container::Appearance {
-                text_color: Some(Color::BLACK),
-                background: Some(Background::Color(SLATE_200)),
-                border_radius: 5.0.into(),
+                text_color: Some(Color::WHITE),
+                background: Some(Background::Color(c(SLATE_200))),
+                border_radius: 10.0.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },
             Style::InactiveHover => container::Appearance {
-                text_color: Some(Color::BLACK),
-                background: Some(Background::Color(SLATE_300)),
-                border_radius: 5.0.into(),
+                text_color: Some(Color::WHITE),
+                background: Some(Background::Color(c(SLATE_300))),
+                border_radius: 10.0.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },
             Style::Active(_) => container::Appearance {
                 text_color: Some(Color::WHITE),
-                background: Some(Background::Color(SKY_400)),
-                border_radius: 5.0.into(),
+                background: Some(Background::Color(c(SKY_400))),
+                border_radius: 10.0.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },
             Style::ActiveHover(_) => container::Appearance {
                 text_color: Some(Color::WHITE),
-                background: Some(Background::Color(SKY_500)),
-                border_radius: 5.0.into(),
+                background: Some(Background::Color(c(SKY_500))),
+                border_radius: 10.0.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },

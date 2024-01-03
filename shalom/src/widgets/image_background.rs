@@ -144,7 +144,9 @@ impl<'a, 'b, M: Clone, R: iced::advanced::Renderer> overlay::Overlay<M, R>
     for Overlay<'a, 'b, M, R>
 {
     fn layout(&self, renderer: &R, _bounds: Size, position: Point) -> Node {
-        let limits = Limits::new(Size::ZERO, self.size).pad([0, 0, 10, 0].into());
+        let limits = Limits::new(Size::ZERO, self.size)
+            .width(Length::Fill)
+            .height(Length::Fill);
 
         let mut child = self.el.as_widget().layout(renderer, &limits);
         child.align(Alignment::Start, Alignment::Start, limits.max());
@@ -176,16 +178,23 @@ impl<'a, 'b, M: Clone, R: iced::advanced::Renderer> overlay::Overlay<M, R>
 
     fn on_event(
         &mut self,
-        _event: Event,
-        _layout: Layout<'_>,
-        _cursor: Cursor,
-        _renderer: &R,
-        _clipboard: &mut dyn Clipboard,
-        _shell: &mut Shell<'_, M>,
+        event: Event,
+        layout: Layout<'_>,
+        cursor: Cursor,
+        renderer: &R,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, M>,
     ) -> Status {
-        Status::Ignored
-        // self.el.as_widget_mut().on_event(self.tree, event, layout, cursor, renderer, clipboard,
-        // shell, &layout.children().next().unwrap().bounds())
+        self.el.as_widget_mut().on_event(
+            self.tree,
+            event,
+            layout.children().next().unwrap(),
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            &layout.bounds(),
+        )
     }
 }
 
