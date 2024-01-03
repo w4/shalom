@@ -1,9 +1,10 @@
-use ::image::{GenericImageView, Pixel, RgbaImage};
+use ::image::{GenericImageView, Pixel, Rgba, RgbaImage};
 use iced::{
     advanced::svg::Handle,
     widget::{image, svg},
 };
 use once_cell::sync::Lazy;
+use stackblur_iter::imgref::Img;
 
 pub mod colours {
     use iced::Color;
@@ -170,4 +171,34 @@ pub fn darken_image(mut img: RgbaImage, factor: f32) -> RgbaImage {
     eprintln!("darkened");
 
     img
+}
+
+#[allow(clippy::many_single_char_names)]
+pub fn blur(img: &RgbaImage, radius: usize) -> RgbaImage {
+    let width = img.width();
+    let height = img.height();
+
+    let mut raw = img
+        .pixels()
+        .map(|p| u32::from_be_bytes([p.0[3], p.0[0], p.0[1], p.0[2]]))
+        .collect::<Vec<_>>();
+
+    stackblur_iter::par_blur_srgb(
+        &mut Img::new(
+            &mut raw,
+            width.try_into().unwrap(),
+            height.try_into().unwrap(),
+        ),
+        radius,
+    );
+
+    let mut image = RgbaImage::new(width, height);
+    for (i, &pixel) in raw.iter().enumerate() {
+        let x = u32::try_from(i).unwrap_or(u32::MAX) % width;
+        let y = u32::try_from(i).unwrap_or(u32::MAX) / width;
+        let [a, r, g, b] = pixel.to_be_bytes();
+        image.put_pixel(x, y, Rgba([r, g, b, a]));
+    }
+
+    image
 }

@@ -206,6 +206,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
 
 [[package]]
+name = "blend-srgb"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8a187f5213b0a15f4344b1850bf1bd1f5cbe98eaf61d9914406723a9a2e6426"
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1452,6 +1458,21 @@ name = "imagesize"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "029d73f573d8e8d63e6d5020011d3255b28c3ba85d6cf870a07184ed23de9284"
+
+[[package]]
+name = "imgref"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90d944e334f00f4449c9640b440a171f816be0152305c12ef90424fc35fd035c"
+
+[[package]]
+name = "imgref-iter"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58112733c0ee178b66dceba49e0445d0b293268719de579d2c7dd4c2290976aa"
+dependencies = [
+ "imgref",
+]
 
 [[package]]
 name = "indexmap"
@@ -2921,6 +2942,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "stackblur-iter",
  "strum",
  "time",
  "tokio",
@@ -3077,6 +3099,19 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "stackblur-iter"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "712b7bee292d3d0ac59c5110f826d3d8aaafd8f39e455319acebe06c0eae3e7f"
+dependencies = [
+ "blend-srgb",
+ "imgref",
+ "imgref-iter",
+ "rayon",
+ "unique",
+]
 
 [[package]]
 name = "static_assertions"
@@ -3630,6 +3665,12 @@ name = "unicode-xid"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
+
+[[package]]
+name = "unique"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d360722e1f3884f5b14d332185f02ff111f771f0c76a313268fe6af1409aba96"
 
 [[package]]
 name = "untrusted"

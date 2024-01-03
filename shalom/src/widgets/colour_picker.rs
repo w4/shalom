@@ -15,20 +15,20 @@ use palette::IntoColor;
 
 use crate::widgets::forced_rounded::forced_rounded;
 
-pub struct ColourPicker<Event> {
+pub struct ColourPicker<Event, F> {
     hue: f32,
     saturation: f32,
     brightness: f32,
-    on_change: fn(f32, f32, f32) -> Event,
+    on_change: F,
     on_mouse_up: Event,
 }
 
-impl<Event> ColourPicker<Event> {
+impl<Event, F> ColourPicker<Event, F> {
     pub fn new(
         hue: f32,
         saturation: f32,
         brightness: f32,
-        on_change: fn(f32, f32, f32) -> Event,
+        on_change: F,
         on_mouse_up: Event,
     ) -> Self {
         Self {
@@ -41,7 +41,9 @@ impl<Event> ColourPicker<Event> {
     }
 }
 
-impl<Event: Clone> Component<Event, Renderer> for ColourPicker<Event> {
+impl<Event: Clone, F: Fn(f32, f32, f32) -> Event> Component<Event, Renderer>
+    for ColourPicker<Event, F>
+{
     type State = ();
     type Event = Message;
 
@@ -88,11 +90,12 @@ impl<Event: Clone> Component<Event, Renderer> for ColourPicker<Event> {
     }
 }
 
-impl<'a, M> From<ColourPicker<M>> for Element<'a, M, Renderer>
+impl<'a, M, F> From<ColourPicker<M, F>> for Element<'a, M, Renderer>
 where
     M: 'a + Clone,
+    F: Fn(f32, f32, f32) -> M + 'a,
 {
-    fn from(card: ColourPicker<M>) -> Self {
+    fn from(card: ColourPicker<M, F>) -> Self {
         component(card)
     }
 }

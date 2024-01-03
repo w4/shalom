@@ -6,7 +6,6 @@ use iced::{
     widget::{container, image::Handle, Column},
     Element, Renderer, Subscription,
 };
-use image::imageops::blur;
 use url::Url;
 
 use crate::{
@@ -202,7 +201,7 @@ impl Listen {
             if let Some(MaybePendingImage::Loading(url)) = &self.background {
                 download_image(
                     url.clone(),
-                    |image| blur(&darken_image(image, 0.3), 5.0),
+                    |image| crate::theme::blur(&darken_image(image, 0.3), 15),
                     Message::BackgroundDownloaded,
                 )
             } else {
