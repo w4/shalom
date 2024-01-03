@@ -45,6 +45,120 @@ impl Shalom {
             self.oracle.as_ref().unwrap().clone(),
         ))
     }
+
+    fn handle_room_event(&mut self, e: pages::room::Message) -> Command<Message> {
+        let ActivePage::Room(r) = &mut self.page else {
+            return Command::none();
+        };
+
+        match r.update(e) {
+            Some(pages::room::Event::Lights(e)) => self.handle_light_event(e),
+            Some(pages::room::Event::Listen(e)) => self.handle_listen_event(e),
+            Some(pages::room::Event::Exit) => {
+                self.page = self.build_omni_route();
+                Command::none()
+            }
+            None => Command::none(),
+        }
+    }
+
+    fn handle_light_event(&mut self, event: pages::room::lights::Event) -> Command<Message> {
+        match event {
+            pages::room::lights::Event::SetLightState(id, state) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.set_light_state(id, state).await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::lights::Event::OpenLightContextMenu(id) => {
+                if let Some(light) = self.oracle.as_ref().and_then(|o| o.fetch_light(id)) {
+                    self.context_menu = Some(ActiveContextMenu::LightControl(
+                        context_menus::light_control::LightControl::new(id, light),
+                    ));
+                }
+
+                Command::none()
+            }
+        }
+    }
+
+    fn handle_listen_event(&self, event: pages::room::listen::Event) -> Command<Message> {
+        match event {
+            pages::room::listen::Event::SetSpeakerVolume(id, new) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).set_volume(new).await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SetSpeakerPosition(id, new) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).seek(new).await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SetSpeakerPlaying(id, new) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move {
+                        let speaker = oracle.speaker(id);
+                        if new {
+                            speaker.play().await;
+                        } else {
+                            speaker.pause().await;
+                        }
+                    },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SetSpeakerMuted(id, new) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).set_mute(new).await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SetSpeakerRepeat(id, new) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).set_repeat(new).await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SpeakerNextTrack(id) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).next().await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SpeakerPreviousTrack(id) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).previous().await },
+                    Message::UpdateLightResult,
+                )
+            }
+            pages::room::listen::Event::SetSpeakerShuffle(id, new) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).set_shuffle(new).await },
+                    Message::UpdateLightResult,
+                )
+            }
+        }
+    }
 }
 
 impl Application for Shalom {
@@ -109,101 +223,7 @@ impl Application for Shalom {
                 }
                 None => Command::none(),
             },
-            (Message::RoomEvent(e), ActivePage::Room(r), _) => match r.update(e) {
-                Some(pages::room::Event::OpenLightContextMenu(id)) => {
-                    if let Some(light) = self.oracle.as_ref().and_then(|o| o.fetch_light(id)) {
-                        self.context_menu = Some(ActiveContextMenu::LightControl(
-                            context_menus::light_control::LightControl::new(id, light),
-                        ));
-                    }
-
-                    Command::none()
-                }
-                Some(pages::room::Event::SetLightState(id, state)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.set_light_state(id, state).await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SetSpeakerVolume(id, new)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).set_volume(new).await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SetSpeakerPosition(id, new)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).seek(new).await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SetSpeakerPlaying(id, new)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move {
-                            let speaker = oracle.speaker(id);
-                            if new {
-                                speaker.play().await;
-                            } else {
-                                speaker.pause().await;
-                            }
-                        },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SetSpeakerMuted(id, new)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).set_mute(new).await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SetSpeakerRepeat(id, new)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).set_repeat(new).await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SpeakerNextTrack(id)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).next().await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SpeakerPreviousTrack(id)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).previous().await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::SetSpeakerShuffle(id, new)) => {
-                    let oracle = self.oracle.as_ref().unwrap().clone();
-
-                    Command::perform(
-                        async move { oracle.speaker(id).set_shuffle(new).await },
-                        Message::UpdateLightResult,
-                    )
-                }
-                Some(pages::room::Event::Exit) => {
-                    self.page = self.build_omni_route();
-                    Command::none()
-                }
-                None => Command::none(),
-            },
+            (Message::RoomEvent(e), _, _) => self.handle_room_event(e),
             (Message::LightControlMenu(e), _, Some(ActiveContextMenu::LightControl(menu))) => {
                 match menu.update(e) {
                     Some(context_menus::light_control::Event::UpdateLightColour {
