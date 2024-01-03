@@ -251,6 +251,7 @@ impl Oracle {
             speaker.actual_media_position = speaker
                 .media_position
                 .zip(speaker.media_position_updated_at)
+                .zip(Some(speaker.state))
                 .map(calculate_actual_media_position);
 
             let _res = self.entity_updates.send(Arc::from(*entity_id));
@@ -553,6 +554,7 @@ impl MediaPlayer {
                 .media_position
                 .map(Duration::from_secs)
                 .zip(attr.media_position_updated_at)
+                .zip(Some(state))
                 .map(calculate_actual_media_position);
 
             MediaPlayer::Speaker(MediaPlayerSpeaker {
@@ -645,12 +647,16 @@ pub struct MediaPlayerSpeaker {
 }
 
 fn calculate_actual_media_position(
-    (position, updated_at): (Duration, time::OffsetDateTime),
+    ((position, updated_at), state): ((Duration, time::OffsetDateTime), MediaPlayerSpeakerState),
 ) -> Duration {
-    let now = time::OffsetDateTime::now_utc();
-    let since_update = now - updated_at;
+    if state.is_playing() {
+        let now = time::OffsetDateTime::now_utc();
+        let since_update = now - updated_at;
 
-    (position + since_update).unsigned_abs()
+        (position + since_update).unsigned_abs()
+    } else {
+        position
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
