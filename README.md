@@ -6,3 +6,5 @@ automation tablet" experience, but can also be used on the
 desktop if so desired.
 
 Written in Rust using [iced](https://github.com/iced-rs/iced).
+
+<p align="center"><a href=".github/screenshots/listen.webp"><img src=".github/screenshots/listen.webp" alt="listen page"></a></p>
