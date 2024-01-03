@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{convert::identity, sync::Arc, time::Duration};
 
 use iced::{
     futures::StreamExt,
@@ -6,12 +6,14 @@ use iced::{
     widget::{container, image::Handle, Column},
     Element, Renderer, Subscription,
 };
+use image::imageops::blur;
 use url::Url;
 
 use crate::{
     hass_client::MediaPlayerRepeat,
     oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState, Oracle, Room},
-    subscriptions::download_image,
+    subscriptions::{download_image, find_fanart_urls, find_musicbrainz_artist, MaybePendingImage},
+    theme::darken_image,
     widgets,
 };
 
@@ -20,7 +22,10 @@ pub struct Listen {
     room: Room,
     oracle: Arc<Oracle>,
     speaker: Option<(&'static str, MediaPlayerSpeaker)>,
-    now_playing_image: Option<Handle>,
+    album_art_image: Option<Handle>,
+    musicbrainz_artist_id: Option<String>,
+    pub background: Option<MaybePendingImage>,
+    artist_logo: Option<MaybePendingImage>,
 }
 
 impl Listen {
@@ -31,22 +36,27 @@ impl Listen {
             room: room.clone(),
             speaker,
             oracle,
-            now_playing_image: None,
+            album_art_image: None,
+            musicbrainz_artist_id: None,
+            background: None,
+            artist_logo: None,
         }
     }
 
     pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
-            Message::NowPlayingImageLoaded(url, handle) => {
-                if self
-                    .speaker
-                    .as_ref()
-                    .and_then(|(_, v)| v.entity_picture.as_ref())
-                    == Some(&url)
-                {
-                    self.now_playing_image = Some(handle);
-                }
-
+            Message::AlbumArtImageLoaded(handle) => {
+                self.album_art_image = Some(handle);
+                None
+            }
+            Message::FanArtLoaded(logo, background) => {
+                self.background = background.map(MaybePendingImage::Loading);
+                self.artist_logo = logo.map(MaybePendingImage::Loading);
+                None
+            }
+            Message::MusicbrainzArtistLoaded(v) => {
+                eprintln!("musicbrainz artist {v}");
+                self.musicbrainz_artist_id = Some(v);
                 None
             }
             Message::UpdateSpeaker => {
@@ -61,7 +71,21 @@ impl Listen {
                         .as_ref()
                         .and_then(|(_, v)| v.entity_picture.as_ref())
                 {
-                    self.now_playing_image = None;
+                    self.album_art_image = None;
+                    self.artist_logo = None;
+                    self.background = None;
+                }
+
+                if self
+                    .speaker
+                    .as_ref()
+                    .and_then(|(_, v)| v.media_artist.as_ref())
+                    != new
+                        .as_ref()
+                        .as_ref()
+                        .and_then(|(_, v)| v.media_artist.as_ref())
+                {
+                    self.musicbrainz_artist_id = None;
                 }
 
                 self.speaker = new;
@@ -106,15 +130,26 @@ impl Listen {
                 speaker.shuffle = new;
                 Some(Event::SetSpeakerShuffle(id, new))
             }
+            Message::BackgroundDownloaded(handle) => {
+                self.background = Some(MaybePendingImage::Downloaded(handle));
+                None
+            }
+            Message::ArtistLogoDownloaded(handle) => {
+                self.artist_logo = Some(MaybePendingImage::Downloaded(handle));
+                None
+            }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message, Renderer> {
-        let mut col = Column::new();
-
         if let Some((_, speaker)) = self.speaker.clone() {
-            col = col.push(container(
-                widgets::media_player::media_player(speaker, self.now_playing_image.clone())
+            container(
+                widgets::media_player::media_player(speaker, self.album_art_image.clone())
+                    .with_artist_logo(
+                        self.artist_logo
+                            .as_ref()
+                            .and_then(MaybePendingImage::handle),
+                    )
                     .on_volume_change(Message::OnSpeakerVolumeChange)
                     .on_mute_change(Message::OnSpeakerMuteChange)
                     .on_repeat_change(Message::OnSpeakerRepeatChange)
@@ -123,22 +158,59 @@ impl Listen {
                     .on_next_track(Message::OnSpeakerNextTrack)
                     .on_previous_track(Message::OnSpeakerPreviousTrack)
                     .on_shuffle_change(Message::OnSpeakerShuffleChange),
-            ));
+            )
+            .into()
+        } else {
+            Column::new().into()
         }
-
-        col.into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        let image_subscription = if let (Some(uri), None) = (
+        let album_art_subscription = if let (Some(uri), None) = (
             self.speaker
                 .as_ref()
                 .and_then(|(_, v)| v.entity_picture.as_ref()),
-            &self.now_playing_image,
+            &self.album_art_image,
         ) {
-            download_image("now-playing", uri.clone(), |_, url, handle| {
-                Message::NowPlayingImageLoaded(url, handle)
-            })
+            download_image(uri.clone(), identity, Message::AlbumArtImageLoaded)
+        } else {
+            Subscription::none()
+        };
+
+        let musicbrainz_artist_id_subscription = if let (Some(artist), None) = (
+            self.speaker
+                .as_ref()
+                .and_then(|(_, v)| v.media_artist.as_ref()),
+            &self.musicbrainz_artist_id,
+        ) {
+            find_musicbrainz_artist(artist.to_string(), Message::MusicbrainzArtistLoaded)
+        } else {
+            Subscription::none()
+        };
+
+        let fanart_subscription = if let (None, None, Some(musicbrainz_id)) = (
+            &self.background,
+            &self.artist_logo,
+            &self.musicbrainz_artist_id,
+        ) {
+            find_fanart_urls(musicbrainz_id.clone(), Message::FanArtLoaded)
+        } else {
+            Subscription::none()
+        };
+
+        let background_subscription =
+            if let Some(MaybePendingImage::Loading(url)) = &self.background {
+                download_image(
+                    url.clone(),
+                    |image| blur(&darken_image(image, 0.3), 5.0),
+                    Message::BackgroundDownloaded,
+                )
+            } else {
+                Subscription::none()
+            };
+
+        let logo_subscription = if let Some(MaybePendingImage::Loading(url)) = &self.artist_logo {
+            download_image(url.clone(), identity, Message::ArtistLogoDownloaded)
         } else {
             Subscription::none()
         };
@@ -155,7 +227,14 @@ impl Listen {
             Subscription::none()
         };
 
-        Subscription::batch([image_subscription, speaker_subscription])
+        Subscription::batch([
+            album_art_subscription,
+            speaker_subscription,
+            musicbrainz_artist_id_subscription,
+            background_subscription,
+            logo_subscription,
+            fanart_subscription,
+        ])
     }
 }
 
@@ -173,7 +252,11 @@ pub enum Event {
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    NowPlayingImageLoaded(Url, Handle),
+    AlbumArtImageLoaded(Handle),
+    BackgroundDownloaded(Handle),
+    ArtistLogoDownloaded(Handle),
+    MusicbrainzArtistLoaded(String),
+    FanArtLoaded(Option<Url>, Option<Url>),
     UpdateSpeaker,
     OnSpeakerVolumeChange(f32),
     OnSpeakerPositionChange(Duration),

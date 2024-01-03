@@ -1,4 +1,4 @@
-use ::image::GenericImageView;
+use ::image::{GenericImageView, Pixel, RgbaImage};
 use iced::{
     advanced::svg::Handle,
     widget::{image, svg},
@@ -159,4 +159,15 @@ impl From<Image> for image::Handle {
     fn from(value: Image) -> Self {
         value.handle()
     }
+}
+
+pub fn darken_image(mut img: RgbaImage, factor: f32) -> RgbaImage {
+    for px in img.pixels_mut() {
+        #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+        px.apply_without_alpha(|v| (f32::from(v) * (1.0 - factor)).min(255.0) as u8);
+    }
+
+    eprintln!("darkened");
+
+    img
 }

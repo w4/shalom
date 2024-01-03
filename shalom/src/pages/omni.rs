@@ -1,4 +1,4 @@
-use std::{any::TypeId, collections::BTreeMap, sync::Arc};
+use std::{any::TypeId, collections::BTreeMap, convert::identity, sync::Arc};
 
 use iced::{
     advanced::graphics::core::Element,
@@ -170,8 +170,11 @@ impl Omni {
         let camera_image_downloads =
             Subscription::batch(self.cameras.iter().filter_map(|(k, v)| {
                 if let CameraImage::Unresolved(url, _) = v {
-                    Some(download_image(*k, url.clone(), |id, url, handle| {
-                        Message::CameraImageDownloaded(id, url, handle)
+                    let k = *k;
+                    let url = url.clone();
+
+                    Some(download_image(url.clone(), identity, move |handle| {
+                        Message::CameraImageDownloaded(k, url, handle)
                     }))
                 } else {
                     None

@@ -1,21 +1,28 @@
 use iced::{
     advanced::graphics::core::Element,
+    font::{Stretch, Weight},
     theme::Text,
     widget::{
         column as icolumn, component, container,
         image::{self, Image},
-        row, text, vertical_space, Component,
+        text, vertical_space, Component,
     },
-    Alignment, Background, Color, Renderer, Theme,
+    Background, Color, Font, Renderer, Theme,
 };
 
-use crate::theme::colours::{SLATE_200, SLATE_400};
+use crate::theme::colours::SLATE_200;
 
-pub fn track_card(artist: String, song: String, image: Option<image::Handle>) -> TrackCard {
+pub fn track_card(
+    artist: &str,
+    song: &str,
+    image: Option<image::Handle>,
+    artist_logo: Option<image::Handle>,
+) -> TrackCard {
     TrackCard {
-        artist,
-        song,
+        artist: artist.to_uppercase(),
+        song: format!("\"{}\"", song.to_uppercase()),
         image,
+        artist_logo,
     }
 }
 
@@ -23,6 +30,7 @@ pub struct TrackCard {
     artist: String,
     song: String,
     image: Option<image::Handle>,
+    artist_logo: Option<image::Handle>,
 }
 
 impl<M> Component<M, Renderer> for TrackCard {
@@ -34,28 +42,41 @@ impl<M> Component<M, Renderer> for TrackCard {
     }
 
     fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let image =
-            if let Some(handle) = self.image.clone() {
-                Element::from(Image::new(handle).width(64).height(64))
-            } else {
-                Element::from(container(vertical_space(0)).width(64).height(64).style(
-                    |_t: &Theme| container::Appearance {
-                        background: Some(Background::Color(SLATE_200)),
-                        ..container::Appearance::default()
-                    },
-                ))
-            };
+        let image = if let Some(handle) = self.image.clone() {
+            Element::from(Image::new(handle).width(192).height(192))
+        } else {
+            Element::from(container(vertical_space(0)).width(192).height(192).style(
+                |_t: &Theme| container::Appearance {
+                    background: Some(Background::Color(SLATE_200)),
+                    ..container::Appearance::default()
+                },
+            ))
+        };
 
-        row![
-            image,
-            icolumn![
-                text(&self.song).size(14).style(Text::Color(Color::WHITE)),
-                text(&self.artist).style(Text::Color(SLATE_400)).size(14)
-            ]
-        ]
-        .align_items(Alignment::Center)
-        .spacing(10)
-        .into()
+        let artist = if let Some(handle) = self.artist_logo.clone() {
+            Element::from(Image::new(handle).height(64))
+        } else {
+            Element::from(
+                text(&self.artist)
+                    .size(49)
+                    .style(Text::Color(Color::WHITE))
+                    .font(Font {
+                        weight: Weight::Bold,
+                        stretch: Stretch::Condensed,
+                        ..Font::with_name("Helvetica Neue")
+                    }),
+            )
+        };
+
+        let song = text(&self.song)
+            .size(24)
+            .style(Text::Color(Color::WHITE))
+            .font(Font {
+                weight: Weight::Medium,
+                ..Font::with_name("Helvetica Neue")
+            });
+
+        icolumn![icolumn![image, artist,].spacing(5), song,].into()
     }
 }
 

@@ -2907,6 +2907,7 @@ version = "0.1.0"
 dependencies = [
  "atomic",
  "bytemuck",
+ "bytes",
  "iced",
  "image",
  "internment",

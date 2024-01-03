@@ -269,6 +269,7 @@ impl Oracle {
                     StateAttributes::MediaPlayer(attrs) => {
                         let entity_id =
                             Intern::<str>::from(state_changed.entity_id.as_ref()).as_ref();
+                        eprintln!("{entity_id} updated");
                         let new_state = MediaPlayer::new(
                             attrs,
                             &state_changed.new_state.state,

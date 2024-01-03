@@ -7,12 +7,13 @@ use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     theme,
-    widget::{row, text, Column},
+    widget::{container, row, text, Column},
     Color, Font, Length, Renderer, Subscription,
 };
 
 use crate::{
     oracle::Oracle,
+    subscriptions::MaybePendingImage,
     widgets::{
         image_background::image_background,
         room_navigation::{Page, RoomNavigation},
@@ -58,16 +59,19 @@ impl Room {
     }
 
     pub fn view(&self) -> Element<'_, Message, Renderer> {
-        let header = text(self.room.name.as_ref())
-            .size(60)
-            .font(Font {
-                weight: Weight::Bold,
-                stretch: Stretch::Condensed,
-                ..Font::with_name("Helvetica Neue")
-            })
-            .style(theme::Text::Color(Color::WHITE));
+        let header = container(
+            text(self.room.name.as_ref())
+                .size(60)
+                .font(Font {
+                    weight: Weight::Bold,
+                    stretch: Stretch::Condensed,
+                    ..Font::with_name("Helvetica Neue")
+                })
+                .style(theme::Text::Color(Color::WHITE)),
+        )
+        .padding([40, 40, 0, 40]);
 
-        let mut col = Column::new().spacing(20).padding(40).push(header);
+        let mut col = Column::new().spacing(20).push(header);
 
         col = col.push(match self.current_page {
             Page::Climate => Element::from(row![]),
@@ -75,14 +79,26 @@ impl Room {
             Page::Lights => self.lights.view().map(Message::Lights),
         });
 
+        let background = match self.current_page {
+            Page::Listen => self
+                .listen
+                .background
+                .as_ref()
+                .and_then(MaybePendingImage::handle),
+            _ => None,
+        };
+
         row![
             RoomNavigation::new(self.current_page)
                 .width(Length::FillPortion(2))
                 .on_change(Message::ChangePage)
                 .on_exit(Message::Exit),
-            image_background(crate::theme::Image::Sunset, col.width(Length::Fill).into())
-                .width(Length::FillPortion(15))
-                .height(Length::Fill),
+            image_background(
+                background.unwrap_or_else(|| crate::theme::Image::Sunset.into()),
+                col.width(Length::Fill).into()
+            )
+            .width(Length::FillPortion(15))
+            .height(Length::Fill),
         ]
         .height(Length::Fill)
         .width(Length::Fill)

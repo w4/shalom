@@ -5,6 +5,7 @@ use std::{
 
 use iced::{
     advanced::graphics::core::Element,
+    alignment::Horizontal,
     theme::{Container, Slider, Svg, Text},
     widget::{
         column as icolumn, component, container, image::Handle, row, slider, svg, text, Component,
@@ -22,12 +23,13 @@ use crate::{
     widgets::mouse_area::mouse_area,
 };
 
-pub fn media_player<M>(device: MediaPlayerSpeaker, image: Option<Handle>) -> MediaPlayer<M> {
+pub fn media_player<M>(device: MediaPlayerSpeaker, album_art: Option<Handle>) -> MediaPlayer<M> {
     MediaPlayer {
         height: Length::Shrink,
         width: Length::Fill,
         device,
-        image,
+        album_art,
+        artist_logo: None,
         on_volume_change: None,
         on_position_change: None,
         on_state_change: None,
@@ -44,7 +46,8 @@ pub struct MediaPlayer<M> {
     height: Length,
     width: Length,
     device: MediaPlayerSpeaker,
-    image: Option<Handle>,
+    album_art: Option<Handle>,
+    artist_logo: Option<Handle>,
     on_volume_change: Option<fn(f32) -> M>,
     on_position_change: Option<fn(Duration) -> M>,
     on_state_change: Option<fn(bool) -> M>,
@@ -56,6 +59,11 @@ pub struct MediaPlayer<M> {
 }
 
 impl<M> MediaPlayer<M> {
+    pub fn with_artist_logo(mut self, logo: Option<Handle>) -> Self {
+        self.artist_logo = logo;
+        self
+    }
+
     pub fn on_volume_change(mut self, f: fn(f32) -> M) -> Self {
         self.on_volume_change = Some(f);
         self
@@ -153,132 +161,136 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
 
         let volume = state.overridden_volume.unwrap_or(self.device.volume);
 
-        container(
-            row![
-                container(crate::widgets::track_card::track_card(
-                    self.device
-                        .media_artist
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_default(),
-                    self.device
-                        .media_title
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_default(),
-                    self.image.clone(),
-                ),)
-                .width(Length::FillPortion(8)),
+        let track_card = crate::widgets::track_card::track_card(
+            self.device.media_artist.as_deref().unwrap_or_default(),
+            self.device.media_title.as_deref().unwrap_or_default(),
+            self.album_art.clone(),
+            self.artist_logo.clone(),
+        );
+
+        let playback_controls = row![
+            mouse_area(
+                svg(Icon::Shuffle)
+                    .height(24)
+                    .width(24)
+                    .style(icon_style(self.device.shuffle)),
+            )
+            .on_press(Event::ToggleShuffle),
+            mouse_area(
+                svg(Icon::Backward)
+                    .height(28)
+                    .width(28)
+                    .style(icon_style(false))
+            )
+            .on_press(Event::PreviousTrack),
+            mouse_area(
+                svg(if self.device.state == MediaPlayerSpeakerState::Playing {
+                    Icon::Pause
+                } else {
+                    Icon::Play
+                })
+                .height(42)
+                .width(42)
+                .style(icon_style(false))
+            )
+            .on_press(Event::TogglePlaying),
+            mouse_area(
+                svg(Icon::Forward)
+                    .height(28)
+                    .width(28)
+                    .style(icon_style(false))
+            )
+            .on_press(Event::NextTrack),
+            mouse_area(
+                svg(match self.device.repeat {
+                    MediaPlayerRepeat::Off | MediaPlayerRepeat::All => Icon::Repeat,
+                    MediaPlayerRepeat::One => Icon::Repeat1,
+                })
+                .height(28)
+                .width(28)
+                .style(icon_style(self.device.repeat != MediaPlayerRepeat::Off)),
+            )
+            .on_press(Event::ToggleRepeat),
+        ]
+        .spacing(14)
+        .align_items(Alignment::Center);
+
+        let volume_controls = row![
+            mouse_area(
+                svg(if self.device.muted {
+                    Icon::SpeakerMuted
+                } else {
+                    Icon::Speaker
+                })
+                .height(16)
+                .width(16)
+                .style(icon_style(false)),
+            )
+            .on_press(Event::ToggleMute),
+            slider(0.0..=1.0, volume, Event::VolumeChange)
+                .width(128)
+                .step(0.01)
+                .on_release(Event::OnVolumeRelease)
+                .style(Slider::Custom(Box::new(SliderStyle))),
+        ]
+        .spacing(12)
+        .align_items(Alignment::Center);
+
+        let scrubber = row![
+            text(format_time(position))
+                .style(Text::Color(SLATE_400))
+                .size(12)
+                .width(Length::FillPortion(10)),
+            slider(
+                0.0..=self.device.media_duration.unwrap_or_default().as_secs_f64(),
+                position.as_secs_f64(),
+                Event::PositionChange
+            )
+            .on_release(Event::OnPositionRelease)
+            .style(Slider::Custom(Box::new(SliderStyle)))
+            .width(Length::FillPortion(80)),
+            text(format_time(self.device.media_duration.unwrap_or_default()))
+                .style(Text::Color(SLATE_400))
+                .size(12)
+                .width(Length::FillPortion(10))
+                .horizontal_alignment(iced::alignment::Horizontal::Right),
+        ]
+        .spacing(14)
+        .align_items(Alignment::Center);
+
+        icolumn![
+            container(track_card)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding([0, 40, 0, 40])
+                .center_y(),
+            container(
                 icolumn![
-                    // container(
-                    //     svg(Icon::Hamburger)
-                    //         .height(30)
-                    //         .width(30),
-                    // )
-                    // .align_x(Horizontal::Right)
-                    // .align_y(Vertical::Center)
-                    // .width(Length::Fill),
                     row![
-                        mouse_area(
-                            svg(Icon::Shuffle)
-                                .height(24)
-                                .width(24)
-                                .style(icon_style(self.device.shuffle)),
-                        )
-                        .on_press(Event::ToggleShuffle),
-                        mouse_area(
-                            svg(Icon::Backward)
-                                .height(28)
-                                .width(28)
-                                .style(icon_style(false))
-                        )
-                        .on_press(Event::PreviousTrack),
-                        mouse_area(
-                            svg(if self.device.state == MediaPlayerSpeakerState::Playing {
-                                Icon::Pause
-                            } else {
-                                Icon::Play
-                            })
-                            .height(42)
-                            .width(42)
-                            .style(icon_style(false))
-                        )
-                        .on_press(Event::TogglePlaying),
-                        mouse_area(
-                            svg(Icon::Forward)
-                                .height(28)
-                                .width(28)
-                                .style(icon_style(false))
-                        )
-                        .on_press(Event::NextTrack),
-                        mouse_area(
-                            svg(match self.device.repeat {
-                                MediaPlayerRepeat::Off | MediaPlayerRepeat::All => Icon::Repeat,
-                                MediaPlayerRepeat::One => Icon::Repeat1,
-                            })
-                            .height(28)
-                            .width(28)
-                            .style(icon_style(self.device.repeat != MediaPlayerRepeat::Off)),
-                        )
-                        .on_press(Event::ToggleRepeat),
+                        row![].width(Length::FillPortion(8)),
+                        container(playback_controls)
+                            .width(Length::FillPortion(20))
+                            .align_x(Horizontal::Center),
+                        container(volume_controls)
+                            .width(Length::FillPortion(8))
+                            .align_x(Horizontal::Right),
                     ]
-                    .spacing(14)
-                    .align_items(Alignment::Center),
-                    row![
-                        text(format_time(position))
-                            .style(Text::Color(SLATE_400))
-                            .size(12)
-                            .width(Length::FillPortion(10)),
-                        slider(
-                            0.0..=self.device.media_duration.unwrap_or_default().as_secs_f64(),
-                            position.as_secs_f64(),
-                            Event::PositionChange
-                        )
-                        .on_release(Event::OnPositionRelease)
-                        .style(Slider::Custom(Box::new(SliderStyle)))
-                        .width(Length::FillPortion(80)),
-                        text(format_time(self.device.media_duration.unwrap_or_default()))
-                            .style(Text::Color(SLATE_400))
-                            .size(12)
-                            .width(Length::FillPortion(10)),
-                    ]
-                    .spacing(14)
-                    .align_items(Alignment::Center),
-                ]
-                .spacing(8)
-                .align_items(Alignment::Center)
-                .width(Length::FillPortion(12)),
-                row![
-                    mouse_area(
-                        svg(if self.device.muted {
-                            Icon::SpeakerMuted
-                        } else {
-                            Icon::Speaker
-                        })
-                        .height(16)
-                        .width(16)
-                        .style(icon_style(false)),
-                    )
-                    .on_press(Event::ToggleMute),
-                    slider(0.0..=1.0, volume, Event::VolumeChange)
-                        .width(128)
-                        .step(0.01)
-                        .on_release(Event::OnVolumeRelease)
-                        .style(Slider::Custom(Box::new(SliderStyle))),
+                    .spacing(8)
+                    .align_items(Alignment::Center)
+                    .width(Length::Fill),
+                    scrubber,
                 ]
                 .align_items(Alignment::Center)
-                .width(Length::FillPortion(4))
-                .spacing(12),
-            ]
-            .align_items(Alignment::Center)
-            .spacing(48),
-        )
-        .height(self.height)
-        .width(self.width)
-        .center_x()
-        .center_y()
-        .style(Container::Custom(Box::new(Style::Inactive)))
-        .padding(20)
+                .spacing(24),
+            )
+            .height(self.height)
+            .width(self.width)
+            .center_x()
+            .center_y()
+            .style(Container::Custom(Box::new(Style::Inactive)))
+            .padding([20, 40, 20, 40])
+        ]
+        .spacing(30)
         .into()
     }
 }
@@ -390,7 +402,7 @@ impl container::StyleSheet for Style {
                 a: 0.8,
                 ..Color::BLACK
             })),
-            border_radius: 10.0.into(),
+            border_radius: 0.0.into(),
             border_width: 0.,
             border_color: Color::default(),
         }
