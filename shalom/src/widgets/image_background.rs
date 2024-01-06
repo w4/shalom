@@ -120,17 +120,14 @@ impl<
         layout: Layout<'_>,
         _renderer: &R,
     ) -> Option<iced::advanced::overlay::Element<'b, M, R>> {
-        Some(
-            overlay::Group::with_children(vec![overlay::Element::new(
-                layout.position(),
-                Box::new(Overlay {
-                    el: &mut self.el,
-                    tree: &mut state.children[0],
-                    size: layout.bounds().size(),
-                }),
-            )])
-            .overlay(),
-        )
+        Some(overlay::Element::new(
+            layout.position(),
+            Box::new(Overlay {
+                el: &mut self.el,
+                tree: &mut state.children[0],
+                size: layout.bounds().size(),
+            }),
+        ))
     }
 }
 

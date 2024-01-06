@@ -1,4 +1,5 @@
 #![deny(clippy::pedantic)]
+#![allow(clippy::struct_field_names)]
 
 mod config;
 mod context_menus;

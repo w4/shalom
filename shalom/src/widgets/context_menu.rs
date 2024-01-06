@@ -21,6 +21,8 @@ use iced::{
 };
 use keyframe::{functions::EaseOutQuint, keyframes, AnimationSequence};
 
+use super::blackhole_event::blackhole_event;
+
 pub struct ContextMenu<'a, M> {
     base: Element<'a, M, Renderer>,
     content: Element<'a, M, Renderer>,
@@ -140,17 +142,38 @@ impl<'a, M: Clone> Widget<M, Renderer> for ContextMenu<'a, M> {
         &'b mut self,
         state: &'b mut Tree,
         layout: Layout<'_>,
-        _renderer: &Renderer,
+        renderer: &Renderer,
     ) -> Option<overlay::Element<'b, M, Renderer>> {
-        Some(overlay::Element::new(
-            layout.position(),
-            Box::new(Overlay {
-                content: &mut self.content,
-                tree: &mut state.children[1],
-                on_close: self.on_close.clone(),
-                state: state.state.downcast_mut::<OverlayState>(),
-            }),
-        ))
+        let [ref mut base_tree, ref mut content_tree] = &mut state.children[..] else {
+            panic!();
+        };
+
+        let mut group = overlay::Group::new();
+
+        if let Some(child) = self
+            .base
+            .as_widget_mut()
+            .overlay(base_tree, layout, renderer)
+        {
+            group = group.push(overlay::Element::new(
+                layout.position(),
+                Box::new(blackhole_event(child)),
+            ));
+        }
+
+        Some(
+            group
+                .push(overlay::Element::new(
+                    layout.position(),
+                    Box::new(Overlay {
+                        content: &mut self.content,
+                        tree: content_tree,
+                        on_close: self.on_close.clone(),
+                        state: state.state.downcast_mut::<OverlayState>(),
+                    }),
+                ))
+                .into(),
+        )
     }
 }
 
