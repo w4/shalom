@@ -76,7 +76,9 @@ impl Room {
         col = col.push(match self.current_page {
             Page::Climate => Element::from(row![]),
             Page::Listen => self.listen.view().map(Message::Listen),
-            Page::Lights => self.lights.view().map(Message::Lights),
+            Page::Lights => container(self.lights.view().map(Message::Lights))
+                .padding([0, 40, 0, 40])
+                .into(),
         });
 
         let background = match self.current_page {

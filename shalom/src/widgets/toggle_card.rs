@@ -4,15 +4,15 @@ use std::time::{Duration, Instant};
 
 use iced::{
     alignment::Vertical,
-    font::{Stretch, Weight},
+    font::Weight,
     theme::{Container, Svg},
-    widget::{column, component, container, svg, text},
+    widget::{component, container, row, svg, text},
     Alignment, Background, Color, Element, Font, Length, Renderer, Theme,
 };
 
 use crate::{
     theme::{
-        colours::{AMBER_200, SKY_400, SKY_500, SLATE_200, SLATE_300, SLATE_600},
+        colours::{ORANGE, SYSTEM_GRAY6},
         Icon,
     },
     widgets::mouse_area::mouse_area,
@@ -131,26 +131,26 @@ impl<M: Clone> iced::widget::Component<M, Renderer> for ToggleCard<M> {
 
         let icon = self.icon.map(|icon| {
             svg(icon)
-                .height(32)
-                .width(32)
+                .height(28)
+                .width(28)
                 .style(Svg::Custom(Box::new(style)))
         });
 
-        let name = text(&self.name).size(14).font(Font {
+        let name = text(&self.name).size(18).font(Font {
             weight: Weight::Bold,
-            stretch: Stretch::Condensed,
+            // stretch: Stretch::Condensed,
             ..Font::with_name("Helvetica Neue")
         });
 
-        let col = if let Some(icon) = icon {
-            column![icon, name]
+        let row = if let Some(icon) = icon {
+            row![icon, name]
         } else {
-            column![name]
+            row![name]
         };
 
         mouse_area(
             container(
-                col.spacing(5)
+                row.spacing(5)
                     .width(self.width)
                     .align_items(Alignment::Center),
             )
@@ -203,43 +203,63 @@ impl container::StyleSheet for Style {
     type Style = Theme;
 
     fn appearance(&self, _style: &Self::Style) -> container::Appearance {
-        let c = |c| Color { a: 0.8, ..c };
+        let base = container::Appearance {
+            text_color: None,
+            background: None,
+            border_radius: 10.0.into(),
+            border_width: 0.0,
+            border_color: Color::TRANSPARENT,
+        };
 
         match self {
             Style::Disabled => container::Appearance {
-                text_color: Some(Color::WHITE),
-                background: Some(Background::Color(c(SLATE_600))),
-                border_radius: 10.0.into(),
-                border_width: 0.0,
-                border_color: Color::default(),
+                text_color: Some(Color {
+                    a: 0.6,
+                    ..Color::WHITE
+                }),
+                background: Some(Background::Color(Color {
+                    a: 0.9,
+                    ..SYSTEM_GRAY6
+                })),
+                ..base
             },
             Style::Inactive => container::Appearance {
-                text_color: Some(Color::WHITE),
-                background: Some(Background::Color(c(SLATE_200))),
-                border_radius: 10.0.into(),
-                border_width: 0.0,
-                border_color: Color::default(),
+                text_color: Some(Color {
+                    a: 0.7,
+                    ..Color::WHITE
+                }),
+                background: Some(Background::Color(Color {
+                    a: 0.7,
+                    ..SYSTEM_GRAY6
+                })),
+                ..base
             },
             Style::InactiveHover => container::Appearance {
-                text_color: Some(Color::WHITE),
-                background: Some(Background::Color(c(SLATE_300))),
-                border_radius: 10.0.into(),
-                border_width: 0.0,
-                border_color: Color::default(),
+                text_color: Some(Color {
+                    a: 0.7,
+                    ..Color::WHITE
+                }),
+                background: Some(Background::Color(Color {
+                    a: 0.9,
+                    ..SYSTEM_GRAY6
+                })),
+                ..base
             },
             Style::Active(_) => container::Appearance {
-                text_color: Some(Color::WHITE),
-                background: Some(Background::Color(c(SKY_400))),
-                border_radius: 10.0.into(),
-                border_width: 0.0,
-                border_color: Color::default(),
+                text_color: Some(Color::BLACK),
+                background: Some(Background::Color(Color {
+                    a: 0.8,
+                    ..Color::WHITE
+                })),
+                ..base
             },
             Style::ActiveHover(_) => container::Appearance {
-                text_color: Some(Color::WHITE),
-                background: Some(Background::Color(c(SKY_500))),
-                border_radius: 10.0.into(),
-                border_width: 0.0,
-                border_color: Color::default(),
+                text_color: Some(Color::BLACK),
+                background: Some(Background::Color(Color {
+                    a: 0.6,
+                    ..Color::WHITE
+                })),
+                ..base
             },
         }
     }
@@ -248,14 +268,21 @@ impl container::StyleSheet for Style {
 impl svg::StyleSheet for Style {
     type Style = Theme;
 
-    fn appearance(&self, _style: &Self::Style) -> svg::Appearance {
+    fn appearance(&self, style: &Self::Style) -> svg::Appearance {
+        let base = <Self as container::StyleSheet>::appearance(self, style)
+            .text_color
+            .unwrap_or(Color::WHITE);
+
         match self {
-            Style::Active(c) | Style::ActiveHover(c) => svg::Appearance {
-                color: Some(c.unwrap_or(AMBER_200)),
+            Style::Active(_) | Style::ActiveHover(_) => svg::Appearance {
+                color: Some(Color {
+                    a: base.a,
+                    ..ORANGE
+                }),
             },
-            Style::Inactive | Style::InactiveHover | Style::Disabled => svg::Appearance {
-                color: Some(Color::BLACK),
-            },
+            Style::Inactive | Style::InactiveHover | Style::Disabled => {
+                svg::Appearance { color: Some(base) }
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use iced::{futures::StreamExt, subscription, widget::Row, Element, Renderer, Subscription};
+use iced::{
+    futures::StreamExt, subscription, widget::Row, Element, Length, Renderer, Subscription,
+};
 
 use crate::{
     oracle::{Light, Oracle, Room},
@@ -49,7 +51,12 @@ impl Lights {
                 light.on.unwrap_or_default(),
                 light.on.is_none(),
             )
-            .icon(Icon::Bulb)
+            .icon(if light.on.is_none() {
+                Icon::Dead
+            } else {
+                Icon::Bulb
+            })
+            .width(Length::Shrink)
             .active_icon_colour(
                 light
                     .hs_color

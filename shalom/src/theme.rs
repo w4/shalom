@@ -20,15 +20,13 @@ pub mod colours {
         }};
     }
 
+    pub const SYSTEM_GRAY6: Color = colour!(28.0, 28.0, 30.0);
+    pub const ORANGE: Color = colour!(255.0, 149.0, 0.0);
+
     pub const SLATE_200: Color = colour!(226.0, 232.0, 240.0);
-    pub const SLATE_300: Color = colour!(203.0, 213.0, 225.0);
     pub const SLATE_400: Color = colour!(148.0, 163.0, 184.0);
-    pub const SLATE_600: Color = colour!(71.0, 85.0, 105.0);
 
-    pub const SKY_400: Color = colour!(56.0, 189.0, 248.0);
     pub const SKY_500: Color = colour!(14.0, 165.0, 233.0);
-
-    pub const AMBER_200: Color = colour!(253.0, 230.0, 138.0);
 }
 
 #[derive(Copy, Clone)]
@@ -61,6 +59,7 @@ pub enum Icon {
     Hvac,
     Shuffle,
     SpeakerFull,
+    Dead,
 }
 
 impl Icon {
@@ -102,6 +101,7 @@ impl Icon {
             Self::Wind => image!("wind"),
             Self::Shuffle => image!("shuffle"),
             Self::Repeat1 => image!("repeat-1"),
+            Self::Dead => image!("dead"),
         }
     }
 }
