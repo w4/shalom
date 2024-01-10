@@ -7,7 +7,7 @@ use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     theme,
-    widget::{container, row, text, Column},
+    widget::{container, lazy, row, text, Column},
     Color, Font, Length, Renderer, Subscription,
 };
 
@@ -69,7 +69,11 @@ impl Room {
             .style(theme::Text::Color(Color::WHITE));
 
         let header = if let Page::Listen = self.current_page {
-            self.listen.header_magic(header).map(Message::Listen)
+            Element::from(lazy(self.room.name.as_ref(), move |_| {
+                self.listen
+                    .header_magic(header.clone())
+                    .map(Message::Listen)
+            }))
         } else {
             Element::from(header)
         };

@@ -4,11 +4,11 @@ use iced::{
         layout::{Limits, Node},
         overlay,
         renderer::Style,
-        widget::Tree,
+        widget::{Operation, Tree},
         Clipboard, Layout, Shell, Widget,
     },
     event::Status,
-    mouse::Cursor,
+    mouse::{Cursor, Interaction},
     widget::image,
     Alignment, ContentFit, Element, Event, Length, Point, Rectangle, Size, Vector,
 };
@@ -192,6 +192,31 @@ impl<'a, 'b, M: Clone, R: iced::advanced::Renderer> overlay::Overlay<M, R>
             shell,
             &layout.bounds(),
         )
+    }
+
+    fn mouse_interaction(
+        &self,
+        layout: Layout<'_>,
+        cursor: Cursor,
+        viewport: &Rectangle,
+        renderer: &R,
+    ) -> Interaction {
+        self.el.as_widget().mouse_interaction(
+            self.tree,
+            layout.children().next().unwrap(),
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+
+    fn operate(&mut self, layout: Layout<'_>, renderer: &R, operation: &mut dyn Operation<M>) {
+        self.el.as_widget().operate(
+            self.tree,
+            layout.children().next().unwrap(),
+            renderer,
+            operation,
+        );
     }
 }
 

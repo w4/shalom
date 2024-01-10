@@ -47,7 +47,7 @@ impl Listen {
         }
     }
 
-    pub fn header_magic<'a>(&'a self, text: Text<'a>) -> Element<'a, Message> {
+    pub fn header_magic<'a>(&self, text: Text<'a>) -> Element<'a, Message> {
         header_search(
             Message::OnSearchTerm,
             Message::OnSearchVisibleChange,

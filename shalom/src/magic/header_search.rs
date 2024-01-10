@@ -6,11 +6,11 @@ use iced::{
         layout::{Limits, Node},
         mouse,
         renderer::{Quad, Style},
-        widget::Tree,
+        widget::{tree::Tag, Tree},
         Clipboard, Layout, Renderer as IRenderer, Shell, Widget,
     },
     event::Status,
-    mouse::Cursor,
+    mouse::{Cursor, Interaction},
     widget::{
         text_input::{Appearance, Id},
         Text,
@@ -57,6 +57,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum BoxSize {
     Fill,
     Min,
@@ -283,12 +284,16 @@ where
                     *state = std::mem::take(next_state);
 
                     match &state {
-                        State::Open => shell.publish((self.on_state_change)(true)),
-                        State::Closed => shell.publish((self.on_state_change)(false)),
+                        State::Open => {
+                            shell.publish((self.on_state_change)(true));
+                            self.current_search_box_size = BoxSize::Fill;
+                        }
+                        State::Closed => {
+                            shell.publish((self.on_state_change)(false));
+                            self.current_search_box_size = BoxSize::Min;
+                        }
                         State::Animate { .. } => {}
                     }
-
-                    self.current_search_box_size = BoxSize::Fill;
                 }
 
                 shell.request_redraw(RedrawRequest::NextFrame);
@@ -314,14 +319,35 @@ where
         }
     }
 
+    fn mouse_interaction(
+        &self,
+        state: &Tree,
+        layout: Layout<'_>,
+        cursor: Cursor,
+        viewport: &Rectangle,
+        renderer: &Renderer,
+    ) -> Interaction {
+        self.input.as_widget().mouse_interaction(
+            &state.children[0],
+            layout.children().nth(1).unwrap().children().nth(1).unwrap(),
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+
     fn state(&self) -> iced::advanced::widget::tree::State {
-        iced::advanced::widget::tree::State::Some(Box::new(
+        iced::advanced::widget::tree::State::new(
             if matches!(self.current_search_box_size, BoxSize::Fill) {
                 State::Open
             } else {
                 State::Closed
             },
-        ))
+        )
+    }
+
+    fn tag(&self) -> Tag {
+        Tag::of::<State>()
     }
 
     fn children(&self) -> Vec<Tree> {
