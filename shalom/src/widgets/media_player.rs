@@ -38,6 +38,7 @@ pub fn media_player<M>(device: MediaPlayerSpeaker, album_art: Option<Handle>) ->
         on_next_track: None,
         on_previous_track: None,
         on_shuffle_change: None,
+        on_search: None,
     }
 }
 
@@ -56,6 +57,7 @@ pub struct MediaPlayer<M> {
     on_next_track: Option<M>,
     on_previous_track: Option<M>,
     on_shuffle_change: Option<fn(bool) -> M>,
+    on_search: Option<M>,
 }
 
 impl<M> MediaPlayer<M> {
@@ -66,6 +68,11 @@ impl<M> MediaPlayer<M> {
 
     pub fn on_volume_change(mut self, f: fn(f32) -> M) -> Self {
         self.on_volume_change = Some(f);
+        self
+    }
+
+    pub fn on_search(mut self, m: M) -> Self {
+        self.on_search = Some(m);
         self
     }
 
@@ -267,7 +274,9 @@ impl<M: Clone> Component<M, Renderer> for MediaPlayer<M> {
             container(
                 icolumn![
                     row![
-                        row![].width(Length::FillPortion(8)),
+                        container(row![])
+                            .width(Length::FillPortion(8))
+                            .align_x(Horizontal::Left),
                         container(playback_controls)
                             .width(Length::FillPortion(20))
                             .align_x(Horizontal::Center),

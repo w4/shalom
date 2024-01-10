@@ -1,10 +1,17 @@
 use ::image::{imageops, GenericImageView, Pixel, Rgba, RgbaImage};
 use iced::{
     advanced::svg::Handle,
-    widget::{image, svg},
+    mouse::Cursor,
+    widget::{
+        canvas,
+        canvas::{Cache, Geometry, LineDash, Path, Stroke, Style},
+        image, svg, Canvas,
+    },
+    Color, Point, Rectangle, Renderer, Theme,
 };
 use once_cell::sync::Lazy;
 use stackblur_iter::imgref::Img;
+use usvg::{tiny_skia_path::PathSegment, NodeKind, Transform, TreeParsing};
 
 pub mod colours {
     use iced::Color;
@@ -60,16 +67,16 @@ pub enum Icon {
     Shuffle,
     SpeakerFull,
     Dead,
+    Search,
+    Close,
 }
 
 impl Icon {
-    pub fn handle(self) -> svg::Handle {
+    pub fn data(self) -> &'static [u8] {
         macro_rules! image {
-            ($path:expr) => {{
-                static FILE: &[u8] = include_bytes!(concat!("../../assets/icons/", $path, ".svg"));
-                static HANDLE: Lazy<svg::Handle> = Lazy::new(|| svg::Handle::from_memory(FILE));
-                (*HANDLE).clone()
-            }};
+            ($path:expr) => {
+                include_bytes!(concat!("../../assets/icons/", $path, ".svg"))
+            };
         }
 
         match self {
@@ -102,7 +109,105 @@ impl Icon {
             Self::Shuffle => image!("shuffle"),
             Self::Repeat1 => image!("repeat-1"),
             Self::Dead => image!("dead"),
+            Self::Search => image!("search"),
+            Self::Close => image!("close"),
         }
+    }
+
+    pub fn handle(self) -> svg::Handle {
+        macro_rules! image {
+            ($v:expr) => {{
+                static HANDLE: Lazy<svg::Handle> =
+                    Lazy::new(|| svg::Handle::from_memory($v.data()));
+                (*HANDLE).clone()
+            }};
+        }
+
+        match self {
+            Self::Home => image!(Icon::Home),
+            Self::Back => image!(Icon::Back),
+            Self::Bulb => image!(Icon::Bulb),
+            Self::Hamburger => image!(Icon::Hamburger),
+            Self::Speaker => image!(Icon::Speaker),
+            Self::SpeakerMuted => image!(Icon::SpeakerMuted),
+            Self::SpeakerFull => image!(Icon::SpeakerFull),
+            Self::Backward => image!(Icon::Backward),
+            Self::Forward => image!(Icon::Forward),
+            Self::Play => image!(Icon::Play),
+            Self::Pause => image!(Icon::Pause),
+            Self::Repeat => image!(Icon::Repeat),
+            Self::Cloud => image!(Icon::Cloud),
+            Self::ClearNight => image!(Icon::ClearNight),
+            Self::Fog => image!(Icon::Fog),
+            Self::Hail => image!(Icon::Hail),
+            Self::Thunderstorms => image!(Icon::Thunderstorms),
+            Self::ThunderstormsRain => image!(Icon::ThunderstormsRain),
+            Self::PartlyCloudyDay => image!(Icon::PartlyCloudyDay),
+            Self::PartlyCloudyNight => image!(Icon::PartlyCloudyNight),
+            Self::ExtremeRain => image!(Icon::ExtremeRain),
+            Self::Rain => image!(Icon::Rain),
+            Self::Snow => image!(Icon::Snow),
+            Self::ClearDay => image!(Icon::ClearDay),
+            Self::Hvac => image!(Icon::Hvac),
+            Self::Wind => image!(Icon::Wind),
+            Self::Shuffle => image!(Icon::Shuffle),
+            Self::Repeat1 => image!(Icon::Repeat1),
+            Self::Dead => image!(Icon::Dead),
+            Self::Search => image!(Icon::Search),
+            Self::Close => image!(Icon::Close),
+        }
+    }
+
+    pub fn canvas<M>(self, color: Color) -> Canvas<IconCanvas, M, Renderer> {
+        macro_rules! image {
+            ($v:expr) => {{
+                thread_local! {
+                    static HANDLE: once_cell::unsync::Lazy<usvg::Tree> = once_cell::unsync::Lazy::new(|| usvg::Tree::from_data($v.data(), &usvg::Options::default()).unwrap());
+                }
+
+                HANDLE.with(|v| (*v).clone())
+            }};
+        }
+
+        let svg = match self {
+            Self::Home => image!(Icon::Home),
+            Self::Back => image!(Icon::Back),
+            Self::Bulb => image!(Icon::Bulb),
+            Self::Hamburger => image!(Icon::Hamburger),
+            Self::Speaker => image!(Icon::Speaker),
+            Self::SpeakerMuted => image!(Icon::SpeakerMuted),
+            Self::SpeakerFull => image!(Icon::SpeakerFull),
+            Self::Backward => image!(Icon::Backward),
+            Self::Forward => image!(Icon::Forward),
+            Self::Play => image!(Icon::Play),
+            Self::Pause => image!(Icon::Pause),
+            Self::Repeat => image!(Icon::Repeat),
+            Self::Cloud => image!(Icon::Cloud),
+            Self::ClearNight => image!(Icon::ClearNight),
+            Self::Fog => image!(Icon::Fog),
+            Self::Hail => image!(Icon::Hail),
+            Self::Thunderstorms => image!(Icon::Thunderstorms),
+            Self::ThunderstormsRain => image!(Icon::ThunderstormsRain),
+            Self::PartlyCloudyDay => image!(Icon::PartlyCloudyDay),
+            Self::PartlyCloudyNight => image!(Icon::PartlyCloudyNight),
+            Self::ExtremeRain => image!(Icon::ExtremeRain),
+            Self::Rain => image!(Icon::Rain),
+            Self::Snow => image!(Icon::Snow),
+            Self::ClearDay => image!(Icon::ClearDay),
+            Self::Hvac => image!(Icon::Hvac),
+            Self::Wind => image!(Icon::Wind),
+            Self::Shuffle => image!(Icon::Shuffle),
+            Self::Repeat1 => image!(Icon::Repeat1),
+            Self::Dead => image!(Icon::Dead),
+            Self::Search => image!(Icon::Search),
+            Self::Close => image!(Icon::Close),
+        };
+
+        canvas(IconCanvas {
+            cache: Cache::new(),
+            svg,
+            color,
+        })
     }
 }
 
@@ -251,4 +356,103 @@ pub fn trim_transparent_padding(mut image: RgbaImage) -> RgbaImage {
     }
 
     imageops::crop(&mut image, left, top, right - left, bottom - top).to_image()
+}
+
+/// Opacity, rotation and other transforms aren't available on iced's svg
+/// primitive, so we'll draw the svg onto a canvas we can apply transforms
+/// to instead.
+pub struct IconCanvas {
+    cache: Cache,
+    svg: usvg::Tree,
+    color: Color,
+}
+
+impl<M> canvas::Program<M, Renderer> for IconCanvas {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: Cursor,
+    ) -> Vec<Geometry> {
+        let frame = self.cache.draw(renderer, bounds.size(), |frame| {
+            let scale = bounds.width / self.svg.size.width();
+            let translate_x = (bounds.width - self.svg.size.width() * scale) / 2.0;
+            let translate_y = (bounds.height - self.svg.size.height() * scale) / 2.0;
+
+            let transform =
+                Transform::from_translate(translate_x, translate_y).post_scale(scale, scale);
+
+            for node in self.svg.root.children() {
+                if let NodeKind::Path(ref path) = *node.borrow() {
+                    let builder = Path::new(|builder| {
+                        for segment in path.data.segments() {
+                            match segment {
+                                PathSegment::MoveTo(mut p) => {
+                                    transform.map_point(&mut p);
+                                    let usvg::tiny_skia_path::Point { x, y } = p;
+                                    builder.move_to(Point::new(x, y));
+                                }
+                                PathSegment::LineTo(mut p) => {
+                                    transform.map_point(&mut p);
+                                    let usvg::tiny_skia_path::Point { x, y } = p;
+                                    builder.line_to(Point::new(x, y));
+                                }
+                                PathSegment::Close => {
+                                    builder.close();
+                                }
+                                PathSegment::QuadTo(mut p1, mut p2) => {
+                                    transform.map_point(&mut p1);
+                                    transform.map_point(&mut p2);
+                                    builder.quadratic_curve_to(
+                                        Point::new(p1.x, p1.y),
+                                        Point::new(p2.x, p2.y),
+                                    );
+                                }
+                                PathSegment::CubicTo(mut p1, mut p2, mut p3) => {
+                                    transform.map_point(&mut p1);
+                                    transform.map_point(&mut p2);
+                                    transform.map_point(&mut p3);
+                                    builder.bezier_curve_to(
+                                        Point::new(p1.x, p1.y),
+                                        Point::new(p2.x, p2.y),
+                                        Point::new(p3.x, p3.y),
+                                    );
+                                }
+                            }
+                        }
+                    });
+
+                    let stroke = if let Some(stroke) = &path.stroke {
+                        Stroke {
+                            style: Style::Solid(self.color),
+                            width: stroke.width.get(),
+                            line_cap: match stroke.linecap {
+                                usvg::LineCap::Butt => canvas::LineCap::Butt,
+                                usvg::LineCap::Round => canvas::LineCap::Round,
+                                usvg::LineCap::Square => canvas::LineCap::Square,
+                            },
+                            line_join: match stroke.linejoin {
+                                usvg::LineJoin::Miter | usvg::LineJoin::MiterClip => {
+                                    canvas::LineJoin::Miter
+                                }
+                                usvg::LineJoin::Round => canvas::LineJoin::Round,
+                                usvg::LineJoin::Bevel => canvas::LineJoin::Bevel,
+                            },
+                            line_dash: LineDash::default(),
+                        }
+                    } else {
+                        Stroke::default()
+                    };
+
+                    frame.stroke(&builder, stroke);
+                }
+            }
+        });
+
+        vec![frame]
+    }
 }

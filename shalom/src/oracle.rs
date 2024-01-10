@@ -553,7 +553,7 @@ impl MediaPlayer {
         if attr.volume_level.is_some() {
             let actual_media_position = attr
                 .media_position
-                .map(Duration::from_secs)
+                .map(Duration::from_secs_f64)
                 .zip(attr.media_position_updated_at)
                 .zip(Some(state))
                 .map(calculate_actual_media_position);
@@ -561,11 +561,11 @@ impl MediaPlayer {
             MediaPlayer::Speaker(MediaPlayerSpeaker {
                 state,
                 volume: attr.volume_level.unwrap(),
-                muted: attr.is_volume_muted.unwrap(),
+                muted: attr.is_volume_muted.unwrap_or_default(),
                 source: Box::from(attr.source.as_deref().unwrap_or("")),
                 actual_media_position,
-                media_duration: attr.media_duration.map(Duration::from_secs),
-                media_position: attr.media_position.map(Duration::from_secs),
+                media_duration: attr.media_duration.map(Duration::from_secs_f64),
+                media_position: attr.media_position.map(Duration::from_secs_f64),
                 media_position_updated_at: attr.media_position_updated_at,
                 media_title: attr.media_title.as_deref().map(Box::from),
                 media_artist: attr.media_artist.as_deref().map(Box::from),

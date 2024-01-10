@@ -3,13 +3,14 @@ use std::{convert::identity, sync::Arc, time::Duration};
 use iced::{
     futures::StreamExt,
     subscription,
-    widget::{container, image::Handle, Column},
+    widget::{container, image::Handle, Column, Text},
     Element, Renderer, Subscription,
 };
 use url::Url;
 
 use crate::{
     hass_client::MediaPlayerRepeat,
+    magic::header_search::header_search,
     oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState, Oracle, Room},
     subscriptions::{download_image, find_fanart_urls, find_musicbrainz_artist, MaybePendingImage},
     theme::{darken_image, trim_transparent_padding},
@@ -25,6 +26,8 @@ pub struct Listen {
     musicbrainz_artist_id: Option<String>,
     pub background: Option<MaybePendingImage>,
     artist_logo: Option<MaybePendingImage>,
+    search_query: String,
+    search_open: bool,
 }
 
 impl Listen {
@@ -39,7 +42,20 @@ impl Listen {
             musicbrainz_artist_id: None,
             background: None,
             artist_logo: None,
+            search_query: String::new(),
+            search_open: false,
         }
+    }
+
+    pub fn header_magic<'a>(&'a self, text: Text<'a>) -> Element<'a, Message> {
+        header_search(
+            Message::OnSearchTerm,
+            Message::OnSearchVisibleChange,
+            self.search_open,
+            &self.search_query,
+            text,
+        )
+        .into()
     }
 
     pub fn update(&mut self, event: Message) -> Option<Event> {
@@ -135,6 +151,14 @@ impl Listen {
             }
             Message::ArtistLogoDownloaded(handle) => {
                 self.artist_logo = Some(MaybePendingImage::Downloaded(handle));
+                None
+            }
+            Message::OnSearchTerm(v) => {
+                self.search_query = v;
+                None
+            }
+            Message::OnSearchVisibleChange(v) => {
+                self.search_open = v;
                 None
             }
         }
@@ -269,4 +293,6 @@ pub enum Message {
     OnSpeakerRepeatChange(MediaPlayerRepeat),
     OnSpeakerNextTrack,
     OnSpeakerPreviousTrack,
+    OnSearchTerm(String),
+    OnSearchVisibleChange(bool),
 }

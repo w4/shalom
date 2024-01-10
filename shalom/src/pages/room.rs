@@ -59,17 +59,22 @@ impl Room {
     }
 
     pub fn view(&self) -> Element<'_, Message, Renderer> {
-        let header = container(
-            text(self.room.name.as_ref())
-                .size(60)
-                .font(Font {
-                    weight: Weight::Bold,
-                    stretch: Stretch::Condensed,
-                    ..Font::with_name("Helvetica Neue")
-                })
-                .style(theme::Text::Color(Color::WHITE)),
-        )
-        .padding([40, 40, 0, 40]);
+        let header = text(self.room.name.as_ref())
+            .size(60)
+            .font(Font {
+                weight: Weight::Bold,
+                stretch: Stretch::Condensed,
+                ..Font::with_name("Helvetica Neue")
+            })
+            .style(theme::Text::Color(Color::WHITE));
+
+        let header = if let Page::Listen = self.current_page {
+            self.listen.header_magic(header).map(Message::Listen)
+        } else {
+            Element::from(header)
+        };
+
+        let header = container(header).padding([40, 40, 0, 40]);
 
         let mut col = Column::new().spacing(20).push(header);
 

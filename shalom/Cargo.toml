@@ -30,4 +30,5 @@ tokio-tungstenite = { version = "0.20", features = ["rustls-tls-native-roots"] }
 toml = "0.8"
 time = { version = "0.3", features = ["std", "serde", "parsing"] }
 url = "2.4.1"
+usvg = "0.37"
 yoke = { version = "0.7", features = ["derive"] }

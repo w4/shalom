@@ -91,6 +91,8 @@ pub async fn create(config: HomeAssistantConfig) -> Client {
                             eprintln!("rtt: {}", OffsetDateTime::now_utc() - ts);
                         }
                         Message::Text(payload) => {
+                            // eprintln!("{payload}");
+
                             let yoked_payload: Yoke<HassResponse, String> = Yoke::attach_to_cart(payload, |s| serde_json::from_str(s).unwrap());
 
                             let payload: &HassResponse = yoked_payload.get();
@@ -536,6 +538,7 @@ pub mod responses {
             let attributes = match kind {
                 "sun" => StateAttributes::Sun(serde_json::from_str(attributes.get()).unwrap()),
                 "media_player" => {
+                    eprintln!("{}", attributes.get());
                     StateAttributes::MediaPlayer(serde_json::from_str(attributes.get()).unwrap())
                 }
                 "camera" => {
@@ -592,8 +595,8 @@ pub mod responses {
         pub media_content_id: Option<MediaContentId<'a>>,
         #[serde(borrow)]
         pub media_content_type: Option<Cow<'a, str>>,
-        pub media_duration: Option<u64>,
-        pub media_position: Option<u64>,
+        pub media_duration: Option<f64>,
+        pub media_position: Option<f64>,
         #[serde(with = "time::serde::iso8601::option", default)]
         pub media_position_updated_at: Option<time::OffsetDateTime>,
         pub media_title: Option<Cow<'a, str>>,

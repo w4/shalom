@@ -4,6 +4,7 @@
 mod config;
 mod context_menus;
 mod hass_client;
+mod magic;
 mod oracle;
 mod pages;
 mod subscriptions;
