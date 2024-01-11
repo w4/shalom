@@ -7,8 +7,8 @@ use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     theme,
-    widget::{container, lazy, row, text, Column},
-    Color, Font, Length, Renderer, Subscription,
+    widget::{container, row, text, Column},
+    Color, Font, Length, Renderer, Subscription, Theme,
 };
 
 use crate::{
@@ -58,7 +58,7 @@ impl Room {
         }
     }
 
-    pub fn view(&self) -> Element<'_, Message, Renderer> {
+    pub fn view(&self, style: &Theme) -> Element<'_, Message, Renderer> {
         let header = text(self.room.name.as_ref())
             .size(60)
             .font(Font {
@@ -69,11 +69,9 @@ impl Room {
             .style(theme::Text::Color(Color::WHITE));
 
         let header = if let Page::Listen = self.current_page {
-            Element::from(lazy(self.room.name.as_ref(), move |_| {
-                self.listen
-                    .header_magic(header.clone())
-                    .map(Message::Listen)
-            }))
+            self.listen
+                .header_magic(header.clone())
+                .map(Message::Listen)
         } else {
             Element::from(header)
         };
@@ -84,7 +82,7 @@ impl Room {
 
         col = col.push(match self.current_page {
             Page::Climate => Element::from(row![]),
-            Page::Listen => self.listen.view().map(Message::Listen),
+            Page::Listen => self.listen.view(style).map(Message::Listen),
             Page::Lights => container(self.lights.view().map(Message::Lights))
                 .padding([0, 40, 0, 40])
                 .into(),

@@ -43,8 +43,8 @@ pub struct MouseArea<'a, Message, Renderer> {
 impl<'a, Message, Renderer> MouseArea<'a, Message, Renderer> {
     /// The message to emit on a left button press.
     #[must_use]
-    pub fn on_press(mut self, message: Message) -> Self {
-        self.on_press = Some(message);
+    pub fn on_press(mut self, message: impl Into<Option<Message>>) -> Self {
+        self.on_press = message.into();
         self
     }
 

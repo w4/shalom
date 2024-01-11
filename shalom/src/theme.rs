@@ -225,6 +225,7 @@ pub enum Image {
     Bedroom,
     DiningRoom,
     Sunset,
+    AlbumArtTest,
 }
 
 impl Image {
@@ -249,6 +250,7 @@ impl Image {
             Image::Bedroom => image!("../../assets/images/bedroom.jpg"),
             Image::DiningRoom => image!("../../assets/images/dining_room.jpg"),
             Image::Sunset => image!("../../assets/images/sunset-blur.jpg"),
+            Image::AlbumArtTest => image!("../../assets/images/album_art_test.jpg"),
         }
     }
 

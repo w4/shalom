@@ -1,10 +1,12 @@
+mod search;
+
 use std::{convert::identity, sync::Arc, time::Duration};
 
 use iced::{
     futures::StreamExt,
     subscription,
-    widget::{container, image::Handle, Column, Text},
-    Element, Renderer, Subscription,
+    widget::{container, image::Handle, lazy, Column, Text},
+    Element, Length, Renderer, Subscription, Theme,
 };
 use url::Url;
 
@@ -47,13 +49,18 @@ impl Listen {
         }
     }
 
-    pub fn header_magic<'a>(&self, text: Text<'a>) -> Element<'a, Message> {
-        header_search(
-            Message::OnSearchTerm,
-            Message::OnSearchVisibleChange,
-            self.search_open,
-            &self.search_query,
-            text,
+    pub fn header_magic(&self, text: Text<'static>) -> Element<'static, Message> {
+        lazy(
+            (self.search_open, self.search_query.clone()),
+            move |(open, query)| {
+                header_search(
+                    Message::OnSearchTerm,
+                    Message::OnSearchVisibleChange,
+                    *open,
+                    query,
+                    text.clone(),
+                )
+            },
         )
         .into()
     }
@@ -159,13 +166,19 @@ impl Listen {
             }
             Message::OnSearchVisibleChange(v) => {
                 self.search_open = v;
+                self.search_query = String::new();
                 None
             }
         }
     }
 
-    pub fn view(&self) -> Element<'_, Message, Renderer> {
-        if let Some((_, speaker)) = self.speaker.clone() {
+    pub fn view(&self, style: &Theme) -> Element<'_, Message, Renderer> {
+        if self.search_open && !self.search_query.is_empty() {
+            container(search::search().view(style))
+                .padding([0, 40, 40, 40])
+                .width(Length::Fill)
+                .into()
+        } else if let Some((_, speaker)) = self.speaker.clone() {
             container(
                 widgets::media_player::media_player(speaker, self.album_art_image.clone())
                     .with_artist_logo(

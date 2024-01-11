@@ -25,6 +25,7 @@ pub struct Shalom {
     context_menu: Option<ActiveContextMenu>,
     oracle: Option<Arc<Oracle>>,
     home_room: Option<&'static str>,
+    theme: Theme,
 }
 
 impl Shalom {
@@ -175,6 +176,7 @@ impl Application for Shalom {
             context_menu: None,
             oracle: None,
             home_room: Some("living_room"),
+            theme: Theme::default(),
         };
 
         // this is only best-effort to try and prevent blocking when loading
@@ -251,7 +253,7 @@ impl Application for Shalom {
     fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
         let page_content = match &self.page {
             ActivePage::Loading => Element::from(column!["Loading...",].spacing(20)),
-            ActivePage::Room(room) => room.view().map(Message::RoomEvent),
+            ActivePage::Room(room) => room.view(&self.theme).map(Message::RoomEvent),
             ActivePage::Omni(omni) => omni.view().map(Message::OmniEvent),
         };
 
