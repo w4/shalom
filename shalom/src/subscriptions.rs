@@ -45,6 +45,7 @@ pub async fn load_image<T: IntoUrl>(
 ) -> image::Handle {
     static CACHE: Lazy<Mutex<LruCache<Url, image::Handle>>> =
         Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
+    static CLIENT: Lazy<reqwest::Client> = Lazy::new(reqwest::Client::new);
 
     let url = url.into_url().unwrap();
 
@@ -52,7 +53,9 @@ pub async fn load_image<T: IntoUrl>(
         return handle.clone();
     }
 
-    let bytes = reqwest::get(url.clone())
+    let bytes = CLIENT
+        .get(url.clone())
+        .send()
         .await
         .unwrap()
         .bytes()

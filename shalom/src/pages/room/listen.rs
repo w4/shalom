@@ -22,7 +22,7 @@ use crate::{
     subscriptions::{
         download_image, find_fanart_urls, find_musicbrainz_artist, load_image, MaybePendingImage,
     },
-    theme::{darken_image, trim_transparent_padding},
+    theme::{darken_image, trim_transparent_padding, Image},
     widgets,
 };
 
@@ -373,16 +373,16 @@ impl SearchState {
     pub fn open(&self, search: String) -> SearchState {
         match self {
             Self::Open { results, .. } => Self::Open {
+                needs_result: !search.is_empty(),
+                waiting_for_result: !search.is_empty(),
                 search,
                 results: results.clone(),
-                needs_result: true,
-                waiting_for_result: true,
             },
             Self::Closed => Self::Open {
+                needs_result: !search.is_empty(),
+                waiting_for_result: !search.is_empty(),
                 search,
                 results: vec![],
-                needs_result: true,
-                waiting_for_result: true,
             },
         }
     }
@@ -456,68 +456,78 @@ fn search_spotify(search: String, token: &str) -> Subscription<Message> {
             let results = FuturesUnordered::new();
 
             for track in &res.tracks.items {
-                let image_url = track.album.images[0].url.to_string();
+                let image_url = track.album.images.last().map(|v| v.url.to_string());
                 let track_name = track.name.to_string();
                 let artist_name = track.artists.iter().map(|v| &v.name).join(", ");
                 let uri = track.uri.to_string();
 
-                results.push(
+                results.push(tokio::spawn(
                     async move {
-                        let image = load_image(image_url, identity).await;
+                        let image = load_album_art(image_url).await;
                         SearchResult::track(image, track_name, artist_name, uri)
                     }
                     .boxed(),
-                );
+                ));
             }
 
             for artist in &res.artists.items {
-                let image_url = artist.images[0].url.to_string();
+                let image_url = artist.images.last().map(|v| v.url.to_string());
                 let artist_name = artist.name.to_string();
                 let uri = artist.uri.to_string();
 
-                results.push(
+                results.push(tokio::spawn(
                     async move {
-                        let image = load_image(image_url, identity).await;
+                        let image = load_album_art(image_url).await;
                         SearchResult::artist(image, artist_name, uri)
                     }
                     .boxed(),
-                );
+                ));
             }
 
             for albums in &res.albums.items {
-                let image_url = albums.images[0].url.to_string();
+                let image_url = albums.images.last().map(|v| v.url.to_string());
                 let album_name = albums.name.to_string();
                 let uri = albums.uri.to_string();
 
-                results.push(
+                results.push(tokio::spawn(
                     async move {
-                        let image = load_image(image_url, identity).await;
+                        let image = load_album_art(image_url).await;
                         SearchResult::album(image, album_name, uri)
                     }
                     .boxed(),
-                );
+                ));
             }
 
             for playlist in &res.playlists.items {
-                let image_url = playlist.images[0].url.to_string();
+                let image_url = playlist.images.last().map(|v| v.url.to_string());
                 let playlist_name = playlist.name.to_string();
                 let uri = playlist.uri.to_string();
 
-                results.push(
+                results.push(tokio::spawn(
                     async move {
-                        let image = load_image(image_url, identity).await;
+                        let image = load_album_art(image_url).await;
                         SearchResult::playlist(image, playlist_name, uri)
                     }
                     .boxed(),
-                );
+                ));
             }
 
-            results.map(Message::SpotifySearchResult)
+            results
+                .map(Result::unwrap)
+                .map(Message::SpotifySearchResult)
         })
         .chain(stream::once(future::ready(
             Message::SpotifySearchResultDone,
         ))),
     )
+}
+
+async fn load_album_art(image_url: Option<String>) -> Handle {
+    if let Some(image_url) = image_url {
+        load_image(image_url, identity).await
+    } else {
+        Image::UnknownArtist.into()
+    }
 }
 
 #[derive(Deserialize, Yokeable)]

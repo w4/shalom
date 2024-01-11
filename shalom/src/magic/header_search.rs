@@ -44,6 +44,7 @@ where
     let current_search_box_size = if open { BoxSize::Fill } else { BoxSize::Min };
 
     HeaderSearch {
+        original_header: header.clone(),
         header,
         current_search_box_size,
         input: iced::widget::text_input("Search...", search_query)
@@ -65,6 +66,7 @@ pub enum BoxSize {
 }
 
 pub struct HeaderSearch<'a, M> {
+    original_header: Text<'a, Renderer>,
     header: Text<'a, Renderer>,
     current_search_box_size: BoxSize,
     on_state_change: fn(bool) -> M,
@@ -87,7 +89,7 @@ where
 
     fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
         let text_node = <iced::advanced::widget::Text<'_, Renderer> as Widget<M, Renderer>>::layout(
-            &self.header,
+            &self.original_header,
             renderer,
             limits,
         );
@@ -255,10 +257,14 @@ where
                 *last_draw = Instant::now();
 
                 text_opacity.advance_by(elapsed);
-                self.header = self.header.clone().style(iced::theme::Text::Color(Color {
-                    a: text_opacity.now(),
-                    ..Color::WHITE
-                }));
+                self.header = self
+                    .header
+                    .clone()
+                    .style(iced::theme::Text::Color(Color {
+                        a: text_opacity.now(),
+                        ..Color::WHITE
+                    }))
+                    .size(60.0 - (2.0 * (1.0 - text_opacity.now())));
 
                 search_box_size.advance_by(elapsed);
                 self.current_search_box_size = BoxSize::Fixed(Size {
