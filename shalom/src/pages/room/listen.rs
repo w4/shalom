@@ -14,8 +14,9 @@ use crate::{
     hass_client::MediaPlayerRepeat,
     magic::header_search::header_search,
     oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState, Oracle, Room},
+    pages::room::listen::search::SearchResult,
     subscriptions::{download_image, find_fanart_urls, find_musicbrainz_artist, MaybePendingImage},
-    theme::{darken_image, trim_transparent_padding},
+    theme::{darken_image, trim_transparent_padding, Image},
     widgets,
 };
 
@@ -174,7 +175,52 @@ impl Listen {
 
     pub fn view(&self, style: &Theme) -> Element<'_, Message, Renderer> {
         if self.search_open && !self.search_query.is_empty() {
-            container(search::search().view(style))
+            let results = vec![
+                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
+                SearchResult::track(
+                    Image::AlbumArtTest.into(),
+                    "Some Track".to_string(),
+                    "Some Artist".to_string(),
+                ),
+                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
+                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
+                SearchResult::track(
+                    Image::AlbumArtTest.into(),
+                    "Some Track".to_string(),
+                    "Some Artist".to_string(),
+                ),
+                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
+                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
+                SearchResult::track(
+                    Image::AlbumArtTest.into(),
+                    "Some Track".to_string(),
+                    "Some Artist".to_string(),
+                ),
+                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
+                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
+                SearchResult::track(
+                    Image::AlbumArtTest.into(),
+                    "Some Track".to_string(),
+                    "Some Artist".to_string(),
+                ),
+                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
+                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
+                SearchResult::track(
+                    Image::AlbumArtTest.into(),
+                    "Some Track".to_string(),
+                    "Some Artist".to_string(),
+                ),
+                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
+                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
+                SearchResult::track(
+                    Image::AlbumArtTest.into(),
+                    "Some Track".to_string(),
+                    "Some Artist".to_string(),
+                ),
+                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
+            ];
+
+            container(search::search(style.clone(), results))
                 .padding([0, 40, 40, 40])
                 .width(Length::Fill)
                 .into()
