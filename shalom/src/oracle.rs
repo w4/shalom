@@ -30,9 +30,10 @@ use crate::{
         },
         CallServiceRequestData, CallServiceRequestLight, CallServiceRequestLightTurnOn,
         CallServiceRequestMediaPlayer, CallServiceRequestMediaPlayerMediaSeek,
-        CallServiceRequestMediaPlayerRepeatSet, CallServiceRequestMediaPlayerShuffleSet,
-        CallServiceRequestMediaPlayerVolumeMute, CallServiceRequestMediaPlayerVolumeSet, Event,
-        HassRequestKind, MediaPlayerRepeat,
+        CallServiceRequestMediaPlayerPlayMedia, CallServiceRequestMediaPlayerPlayMediaEnqueue,
+        CallServiceRequestMediaPlayerPlayMediaType, CallServiceRequestMediaPlayerRepeatSet,
+        CallServiceRequestMediaPlayerShuffleSet, CallServiceRequestMediaPlayerVolumeMute,
+        CallServiceRequestMediaPlayerVolumeSet, Event, HassRequestKind, MediaPlayerRepeat,
     },
     widgets::colour_picker::clamp_to_u8,
 };
@@ -459,6 +460,17 @@ impl EloquentSpeaker<'_> {
     pub async fn previous(&self) {
         self.call(CallServiceRequestMediaPlayer::MediaPreviousTrack)
             .await;
+    }
+
+    pub async fn play_track(&self, uri: String) {
+        self.call(CallServiceRequestMediaPlayer::PlayMedia(
+            CallServiceRequestMediaPlayerPlayMedia {
+                media_content_id: uri,
+                media_content_type: CallServiceRequestMediaPlayerPlayMediaType::Music,
+                enqueue: CallServiceRequestMediaPlayerPlayMediaEnqueue::Play,
+            },
+        ))
+        .await;
     }
 }
 

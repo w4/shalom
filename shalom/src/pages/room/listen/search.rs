@@ -11,7 +11,7 @@ use iced::{
 
 use crate::widgets::mouse_area::mouse_area;
 
-pub fn search<M: Clone + 'static>(theme: Theme, results: Vec<SearchResult>) -> Search<M> {
+pub fn search<M: Clone + 'static>(theme: Theme, results: &[SearchResult]) -> Search<'_, M> {
     Search {
         on_track_press: None,
         theme,
@@ -19,13 +19,20 @@ pub fn search<M: Clone + 'static>(theme: Theme, results: Vec<SearchResult>) -> S
     }
 }
 
-pub struct Search<M> {
+pub struct Search<'a, M> {
     on_track_press: Option<fn(String) -> M>,
     theme: Theme,
-    results: Vec<SearchResult>,
+    results: &'a [SearchResult],
 }
 
-impl<M: Clone + 'static> Component<M, Renderer> for Search<M> {
+impl<M> Search<'_, M> {
+    pub fn on_track_press(mut self, f: fn(String) -> M) -> Self {
+        self.on_track_press = Some(f);
+        self
+    }
+}
+
+impl<M: Clone + 'static> Component<M, Renderer> for Search<'_, M> {
     type State = ();
     type Event = Event;
 
@@ -44,7 +51,7 @@ impl<M: Clone + 'static> Component<M, Renderer> for Search<M> {
             }
 
             let track = mouse_area(search_item_container(result_card(result, &self.theme)))
-                .on_press(Event::OnTrackPress("hello world".to_string()));
+                .on_press(Event::OnTrackPress(result.uri.to_string()));
 
             col = col.push(track);
         }
@@ -53,13 +60,13 @@ impl<M: Clone + 'static> Component<M, Renderer> for Search<M> {
     }
 }
 
-impl<M: 'static + Clone> From<Search<M>> for Element<'static, M, Renderer> {
-    fn from(value: Search<M>) -> Self {
+impl<'a, M: 'static + Clone> From<Search<'a, M>> for Element<'a, M, Renderer> {
+    fn from(value: Search<'a, M>) -> Self {
         component(value)
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Event {
     OnTrackPress(String),
 }
@@ -118,42 +125,58 @@ impl container::StyleSheet for SearchContainer {
 }
 
 #[allow(clippy::module_name_repetitions)]
+#[derive(Debug, Clone, Hash)]
 pub struct SearchResult {
     image: Handle,
     title: String,
+    uri: String,
     metadata: ResultMetadata,
 }
 
 impl SearchResult {
-    pub fn track(image: Handle, title: String, artist: String) -> Self {
+    pub fn track(image: Handle, title: String, artist: String, uri: String) -> Self {
         Self {
             image,
             title,
+            uri,
             metadata: ResultMetadata::Track(artist),
         }
     }
 
-    pub fn playlist(image: Handle, title: String) -> Self {
+    pub fn playlist(image: Handle, title: String, uri: String) -> Self {
         Self {
             image,
             title,
+            uri,
             metadata: ResultMetadata::Playlist,
         }
     }
 
-    pub fn album(image: Handle, title: String) -> Self {
+    pub fn artist(image: Handle, title: String, uri: String) -> Self {
         Self {
             image,
             title,
+            uri,
+            metadata: ResultMetadata::Artist,
+        }
+    }
+
+    pub fn album(image: Handle, title: String, uri: String) -> Self {
+        Self {
+            image,
+            title,
+            uri,
             metadata: ResultMetadata::Album,
         }
     }
 }
 
+#[derive(Debug, Clone, Hash)]
 pub enum ResultMetadata {
     Track(String),
     Playlist,
     Album,
+    Artist,
 }
 
 impl Display for ResultMetadata {
@@ -162,6 +185,7 @@ impl Display for ResultMetadata {
             ResultMetadata::Track(v) => write!(f, "Track • {v}"),
             ResultMetadata::Playlist => write!(f, "Playlist"),
             ResultMetadata::Album => write!(f, "Album"),
+            ResultMetadata::Artist => write!(f, "Artist"),
         }
     }
 }

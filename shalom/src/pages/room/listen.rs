@@ -1,22 +1,28 @@
 mod search;
 
-use std::{convert::identity, sync::Arc, time::Duration};
+use std::{borrow::Cow, convert::identity, sync::Arc, time::Duration};
 
 use iced::{
-    futures::StreamExt,
+    futures::{future, stream, stream::FuturesUnordered, FutureExt, StreamExt},
     subscription,
     widget::{container, image::Handle, lazy, Column, Text},
     Element, Length, Renderer, Subscription, Theme,
 };
+use itertools::Itertools;
+use serde::Deserialize;
 use url::Url;
+use yoke::{Yoke, Yokeable};
 
 use crate::{
+    config::Config,
     hass_client::MediaPlayerRepeat,
     magic::header_search::header_search,
     oracle::{MediaPlayerSpeaker, MediaPlayerSpeakerState, Oracle, Room},
     pages::room::listen::search::SearchResult,
-    subscriptions::{download_image, find_fanart_urls, find_musicbrainz_artist, MaybePendingImage},
-    theme::{darken_image, trim_transparent_padding, Image},
+    subscriptions::{
+        download_image, find_fanart_urls, find_musicbrainz_artist, load_image, MaybePendingImage,
+    },
+    theme::{darken_image, trim_transparent_padding},
     widgets,
 };
 
@@ -29,12 +35,12 @@ pub struct Listen {
     musicbrainz_artist_id: Option<String>,
     pub background: Option<MaybePendingImage>,
     artist_logo: Option<MaybePendingImage>,
-    search_query: String,
-    search_open: bool,
+    search: SearchState,
+    config: Arc<Config>,
 }
 
 impl Listen {
-    pub fn new(oracle: Arc<Oracle>, room: &Room) -> Self {
+    pub fn new(oracle: Arc<Oracle>, room: &Room, config: Arc<Config>) -> Self {
         let speaker = room.speaker(&oracle);
 
         Self {
@@ -45,27 +51,31 @@ impl Listen {
             musicbrainz_artist_id: None,
             background: None,
             artist_logo: None,
-            search_query: String::new(),
-            search_open: false,
+            search: SearchState::Closed,
+            config,
         }
     }
 
     pub fn header_magic(&self, text: Text<'static>) -> Element<'static, Message> {
-        lazy(
-            (self.search_open, self.search_query.clone()),
-            move |(open, query)| {
-                header_search(
-                    Message::OnSearchTerm,
-                    Message::OnSearchVisibleChange,
-                    *open,
-                    query,
-                    text.clone(),
-                )
-            },
-        )
+        lazy(self.search.clone(), move |search| {
+            let (open, query) = if let Some(v) = search.search() {
+                (true, v)
+            } else {
+                (false, "")
+            };
+
+            header_search(
+                Message::OnSearchTerm,
+                Message::OnSearchVisibleChange,
+                open,
+                query,
+                text.clone(),
+            )
+        })
         .into()
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
             Message::AlbumArtImageLoaded(handle) => {
@@ -162,68 +172,62 @@ impl Listen {
                 None
             }
             Message::OnSearchTerm(v) => {
-                self.search_query = v;
+                self.search = self.search.open(v);
                 None
             }
             Message::OnSearchVisibleChange(v) => {
-                self.search_open = v;
-                self.search_query = String::new();
+                self.search = if v {
+                    SearchState::Open {
+                        search: String::new(),
+                        results: vec![],
+                        needs_result: false,
+                        waiting_for_result: false,
+                    }
+                } else {
+                    SearchState::Closed
+                };
                 None
             }
+            Message::SpotifySearchResult(res) => {
+                if let SearchState::Open {
+                    results,
+                    needs_result,
+                    ..
+                } = &mut self.search
+                {
+                    if *needs_result {
+                        results.clear();
+                        *needs_result = false;
+                    }
+
+                    results.push(res);
+                }
+
+                None
+            }
+            Message::SpotifySearchResultDone => {
+                if let SearchState::Open {
+                    waiting_for_result, ..
+                } = &mut self.search
+                {
+                    *waiting_for_result = false;
+                }
+
+                None
+            }
+            Message::OnPlayTrack(uri) => Some(Event::PlayTrack(self.speaker.as_ref()?.0, uri)),
         }
     }
 
     pub fn view(&self, style: &Theme) -> Element<'_, Message, Renderer> {
-        if self.search_open && !self.search_query.is_empty() {
-            let results = vec![
-                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
-                SearchResult::track(
-                    Image::AlbumArtTest.into(),
-                    "Some Track".to_string(),
-                    "Some Artist".to_string(),
-                ),
-                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
-                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
-                SearchResult::track(
-                    Image::AlbumArtTest.into(),
-                    "Some Track".to_string(),
-                    "Some Artist".to_string(),
-                ),
-                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
-                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
-                SearchResult::track(
-                    Image::AlbumArtTest.into(),
-                    "Some Track".to_string(),
-                    "Some Artist".to_string(),
-                ),
-                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
-                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
-                SearchResult::track(
-                    Image::AlbumArtTest.into(),
-                    "Some Track".to_string(),
-                    "Some Artist".to_string(),
-                ),
-                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
-                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
-                SearchResult::track(
-                    Image::AlbumArtTest.into(),
-                    "Some Track".to_string(),
-                    "Some Artist".to_string(),
-                ),
-                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
-                SearchResult::album(Image::AlbumArtTest.into(), "Some Album".to_string()),
-                SearchResult::track(
-                    Image::AlbumArtTest.into(),
-                    "Some Track".to_string(),
-                    "Some Artist".to_string(),
-                ),
-                SearchResult::playlist(Image::AlbumArtTest.into(), "Some Playlist".to_string()),
-            ];
-
-            container(search::search(style.clone(), results))
-                .padding([0, 40, 40, 40])
-                .width(Length::Fill)
-                .into()
+        if self.search.is_open() {
+            container(
+                search::search(style.clone(), self.search.results())
+                    .on_track_press(Message::OnPlayTrack),
+            )
+            .padding([0, 40, 40, 40])
+            .width(Length::Fill)
+            .into()
         } else if let Some((_, speaker)) = self.speaker.clone() {
             container(
                 widgets::media_player::media_player(speaker, self.album_art_image.clone())
@@ -313,6 +317,17 @@ impl Listen {
             Subscription::none()
         };
 
+        let spotify_result = if let SearchState::Open {
+            search,
+            waiting_for_result: true,
+            ..
+        } = &self.search
+        {
+            search_spotify(search.to_string(), &self.config.spotify.token)
+        } else {
+            Subscription::none()
+        };
+
         Subscription::batch([
             album_art_subscription,
             speaker_subscription,
@@ -320,11 +335,60 @@ impl Listen {
             background_subscription,
             logo_subscription,
             fanart_subscription,
+            spotify_result,
         ])
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Hash, Clone)]
+pub enum SearchState {
+    Open {
+        search: String,
+        results: Vec<SearchResult>,
+        needs_result: bool,
+        waiting_for_result: bool,
+    },
+    Closed,
+}
+
+impl SearchState {
+    pub fn is_open(&self) -> bool {
+        matches!(self, Self::Open { search, .. } if !search.is_empty())
+    }
+
+    pub fn results(&self) -> &[SearchResult] {
+        match self {
+            Self::Open { results, .. } => results.as_slice(),
+            Self::Closed => &[],
+        }
+    }
+
+    pub fn search(&self) -> Option<&str> {
+        match self {
+            SearchState::Open { search, .. } => Some(search),
+            SearchState::Closed => None,
+        }
+    }
+
+    pub fn open(&self, search: String) -> SearchState {
+        match self {
+            Self::Open { results, .. } => Self::Open {
+                search,
+                results: results.clone(),
+                needs_result: true,
+                waiting_for_result: true,
+            },
+            Self::Closed => Self::Open {
+                search,
+                results: vec![],
+                needs_result: true,
+                waiting_for_result: true,
+            },
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum Event {
     SetSpeakerVolume(&'static str, f32),
     SetSpeakerPosition(&'static str, Duration),
@@ -334,6 +398,7 @@ pub enum Event {
     SetSpeakerRepeat(&'static str, MediaPlayerRepeat),
     SpeakerNextTrack(&'static str),
     SpeakerPreviousTrack(&'static str),
+    PlayTrack(&'static str, String),
 }
 
 #[derive(Clone, Debug)]
@@ -354,4 +419,172 @@ pub enum Message {
     OnSpeakerPreviousTrack,
     OnSearchTerm(String),
     OnSearchVisibleChange(bool),
+    SpotifySearchResult(SearchResult),
+    SpotifySearchResultDone,
+    OnPlayTrack(String),
+}
+
+fn search_spotify(search: String, token: &str) -> Subscription<Message> {
+    let token = token.to_string();
+
+    subscription::run_with_id(
+        format!("search-{search}"),
+        stream::once(async move {
+            let mut url = Url::parse("https://api.spotify.com/v1/search").unwrap();
+            url.query_pairs_mut()
+                .append_pair("q", &search)
+                .append_pair("type", "album,artist,playlist,track")
+                .append_pair("market", "GB")
+                .append_pair("limit", "20");
+
+            let res = reqwest::Client::new()
+                .get(url)
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap();
+
+            eprintln!("{}", std::str::from_utf8(res.as_ref()).unwrap());
+
+            Yoke::attach_to_cart(res, |s| serde_json::from_str(s).unwrap())
+        })
+        .flat_map(|res: Yoke<SpotifySearchResult<'static>, String>| {
+            let res = res.get();
+            let results = FuturesUnordered::new();
+
+            for track in &res.tracks.items {
+                let image_url = track.album.images[0].url.to_string();
+                let track_name = track.name.to_string();
+                let artist_name = track.artists.iter().map(|v| &v.name).join(", ");
+                let uri = track.uri.to_string();
+
+                results.push(
+                    async move {
+                        let image = load_image(image_url, identity).await;
+                        SearchResult::track(image, track_name, artist_name, uri)
+                    }
+                    .boxed(),
+                );
+            }
+
+            for artist in &res.artists.items {
+                let image_url = artist.images[0].url.to_string();
+                let artist_name = artist.name.to_string();
+                let uri = artist.uri.to_string();
+
+                results.push(
+                    async move {
+                        let image = load_image(image_url, identity).await;
+                        SearchResult::artist(image, artist_name, uri)
+                    }
+                    .boxed(),
+                );
+            }
+
+            for albums in &res.albums.items {
+                let image_url = albums.images[0].url.to_string();
+                let album_name = albums.name.to_string();
+                let uri = albums.uri.to_string();
+
+                results.push(
+                    async move {
+                        let image = load_image(image_url, identity).await;
+                        SearchResult::album(image, album_name, uri)
+                    }
+                    .boxed(),
+                );
+            }
+
+            for playlist in &res.playlists.items {
+                let image_url = playlist.images[0].url.to_string();
+                let playlist_name = playlist.name.to_string();
+                let uri = playlist.uri.to_string();
+
+                results.push(
+                    async move {
+                        let image = load_image(image_url, identity).await;
+                        SearchResult::playlist(image, playlist_name, uri)
+                    }
+                    .boxed(),
+                );
+            }
+
+            results.map(Message::SpotifySearchResult)
+        })
+        .chain(stream::once(future::ready(
+            Message::SpotifySearchResultDone,
+        ))),
+    )
+}
+
+#[derive(Deserialize, Yokeable)]
+pub struct SpotifySearchResult<'a> {
+    #[serde(borrow)]
+    tracks: SpotifySearchResultWrapper<SpotifyTrack<'a>>,
+    #[serde(borrow)]
+    artists: SpotifySearchResultWrapper<SpotifyArtist<'a>>,
+    #[serde(borrow)]
+    albums: SpotifySearchResultWrapper<SpotifyAlbum<'a>>,
+    #[serde(borrow)]
+    playlists: SpotifySearchResultWrapper<SpotifyPlaylist<'a>>,
+}
+
+#[derive(Deserialize)]
+pub struct SpotifySearchResultWrapper<T> {
+    items: Vec<T>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, Yokeable)]
+pub struct SpotifyTrack<'a> {
+    #[serde(borrow)]
+    album: SpotifyAlbum<'a>,
+    #[serde(borrow)]
+    artists: Vec<SpotifyArtist<'a>>,
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    #[serde(borrow)]
+    uri: Cow<'a, str>,
+}
+
+#[derive(Deserialize, Yokeable)]
+#[allow(dead_code)]
+pub struct SpotifyAlbum<'a> {
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    #[serde(borrow, default)]
+    images: Vec<SpotifyImage<'a>>,
+    #[serde(borrow, default)]
+    artists: Vec<SpotifyArtist<'a>>,
+    #[serde(borrow)]
+    uri: Cow<'a, str>,
+}
+
+#[derive(Deserialize, Yokeable)]
+pub struct SpotifyPlaylist<'a> {
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    #[serde(borrow, default)]
+    images: Vec<SpotifyImage<'a>>,
+    #[serde(borrow)]
+    uri: Cow<'a, str>,
+}
+
+#[derive(Deserialize)]
+pub struct SpotifyArtist<'a> {
+    #[serde(borrow)]
+    name: Cow<'a, str>,
+    #[serde(borrow, default)]
+    images: Vec<SpotifyImage<'a>>,
+    #[serde(borrow)]
+    uri: Cow<'a, str>,
+}
+
+#[derive(Deserialize)]
+pub struct SpotifyImage<'a> {
+    #[serde(borrow)]
+    url: Cow<'a, str>,
 }

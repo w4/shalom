@@ -295,6 +295,7 @@ pub enum CallServiceRequestMediaPlayer {
     MediaSeek(CallServiceRequestMediaPlayerMediaSeek),
     ShuffleSet(CallServiceRequestMediaPlayerShuffleSet),
     RepeatSet(CallServiceRequestMediaPlayerRepeatSet),
+    PlayMedia(CallServiceRequestMediaPlayerPlayMedia),
     MediaPlay,
     MediaPause,
     MediaNextTrack,
@@ -326,6 +327,33 @@ pub struct CallServiceRequestMediaPlayerShuffleSet {
 #[derive(Serialize)]
 pub struct CallServiceRequestMediaPlayerRepeatSet {
     pub repeat: MediaPlayerRepeat,
+}
+
+#[derive(Serialize)]
+pub struct CallServiceRequestMediaPlayerPlayMedia {
+    pub media_content_id: String,
+    pub media_content_type: CallServiceRequestMediaPlayerPlayMediaType,
+    pub enqueue: CallServiceRequestMediaPlayerPlayMediaEnqueue,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CallServiceRequestMediaPlayerPlayMediaType {
+    Music,
+    Tvshow,
+    Video,
+    Episode,
+    Channel,
+    Playlist,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CallServiceRequestMediaPlayerPlayMediaEnqueue {
+    Add,
+    Next,
+    Play,
+    Replace,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

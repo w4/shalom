@@ -26,6 +26,7 @@ pub struct Shalom {
     oracle: Option<Arc<Oracle>>,
     home_room: Option<&'static str>,
     theme: Theme,
+    config: Option<Arc<Config>>,
 }
 
 impl Shalom {
@@ -40,6 +41,7 @@ impl Shalom {
         ActivePage::Room(pages::room::Room::new(
             room,
             self.oracle.as_ref().unwrap().clone(),
+            self.config.as_ref().unwrap().clone(),
         ))
     }
 
@@ -160,6 +162,14 @@ impl Shalom {
                     Message::UpdateLightResult,
                 )
             }
+            pages::room::listen::Event::PlayTrack(id, uri) => {
+                let oracle = self.oracle.as_ref().unwrap().clone();
+
+                Command::perform(
+                    async move { oracle.speaker(id).play_track(uri).await },
+                    Message::PlayTrackResult,
+                )
+            }
         }
     }
 }
@@ -177,6 +187,7 @@ impl Application for Shalom {
             oracle: None,
             home_room: Some("living_room"),
             theme: Theme::default(),
+            config: None,
         };
 
         // this is only best-effort to try and prevent blocking when loading
@@ -186,8 +197,8 @@ impl Application for Shalom {
         let command = Command::perform(
             async {
                 let config = load_config().await;
-                let client = hass_client::create(config.home_assistant).await;
-                Oracle::new(client.clone()).await
+                let client = hass_client::create(config.home_assistant.clone()).await;
+                (Oracle::new(client.clone()).await, config)
             },
             Message::Loaded,
         );
@@ -203,8 +214,9 @@ impl Application for Shalom {
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         #[allow(clippy::single_match)]
         match (message, &mut self.page, &mut self.context_menu) {
-            (Message::Loaded(oracle), _, _) => {
+            (Message::Loaded((oracle, config)), _, _) => {
                 self.oracle = Some(oracle);
+                self.config = Some(Arc::new(config));
                 self.page = self.build_home_route();
                 Command::none()
             }
@@ -288,7 +300,7 @@ async fn load_config() -> Config {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(Arc<Oracle>),
+    Loaded((Arc<Oracle>, Config)),
     CloseContextMenu,
     OpenOmniPage,
     OpenHomePage,
@@ -296,6 +308,7 @@ pub enum Message {
     RoomEvent(pages::room::Message),
     LightControlMenu(context_menus::light_control::Message),
     UpdateLightResult(()),
+    PlayTrackResult(()),
 }
 
 #[derive(Debug)]

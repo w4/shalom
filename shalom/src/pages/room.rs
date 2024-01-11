@@ -12,6 +12,7 @@ use iced::{
 };
 
 use crate::{
+    config::Config,
     oracle::Oracle,
     subscriptions::MaybePendingImage,
     widgets::{
@@ -30,12 +31,12 @@ pub struct Room {
 }
 
 impl Room {
-    pub fn new(id: &'static str, oracle: Arc<Oracle>) -> Self {
+    pub fn new(id: &'static str, oracle: Arc<Oracle>, config: Arc<Config>) -> Self {
         let room = oracle.room(id).clone();
 
         Self {
             id,
-            listen: listen::Listen::new(oracle.clone(), &room),
+            listen: listen::Listen::new(oracle.clone(), &room, config),
             lights: lights::Lights::new(oracle, &room),
             room,
             current_page: Page::Listen,

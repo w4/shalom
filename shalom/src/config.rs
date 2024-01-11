@@ -8,13 +8,20 @@ pub const LAST_FM_API_KEY: &str = "732433605ea7893c761d340a05752695";
 pub const LAST_FM_SHARED_SECRET: &str = "420fdb301e6b4a62a888bf51def71670";
 pub const FANART_PROJECT_KEY: &str = "df5eb171c6e0e49122ad59830cdf789f";
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct Config {
     pub home_assistant: HomeAssistantConfig,
+    pub spotify: SpotifyConfig,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "kebab-case")]
+pub struct SpotifyConfig {
+    pub token: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct HomeAssistantConfig {
     pub uri: String,

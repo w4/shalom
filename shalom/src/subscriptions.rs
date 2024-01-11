@@ -4,6 +4,7 @@ use iced::{futures::stream, subscription, widget::image, Subscription};
 use lru::LruCache;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use reqwest::IntoUrl;
 use url::Url;
 
 use crate::config::FANART_PROJECT_KEY;
@@ -28,41 +29,50 @@ pub fn download_image<M: 'static>(
     post_process: fn(::image::RgbaImage) -> ::image::RgbaImage,
     resp: impl FnOnce(image::Handle) -> M + Send + 'static,
 ) -> Subscription<M> {
-    static CACHE: Lazy<Mutex<LruCache<Url, image::Handle>>> =
-        Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(10).unwrap())));
-
     subscription::run_with_id(
         url.to_string(),
         stream::once(async move {
             eprintln!("{url} dl");
 
-            if let Some(handle) = CACHE.lock().get(&url) {
-                return (resp)(handle.clone());
-            }
-
-            let bytes = reqwest::get(url.clone())
-                .await
-                .unwrap()
-                .bytes()
-                .await
-                .unwrap();
-
-            let handle = tokio::task::spawn_blocking(move || {
-                eprintln!("parsing image");
-                let img = ::image::load_from_memory(&bytes).unwrap();
-                eprintln!("post processing");
-                let data = post_process(img.into_rgba8());
-                let (h, w) = data.dimensions();
-                image::Handle::from_pixels(h, w, data.into_raw())
-            })
-            .await
-            .unwrap();
-
-            CACHE.lock().push(url.clone(), handle.clone());
-
-            (resp)(handle)
+            (resp)(load_image(url.clone(), post_process).await)
         }),
     )
+}
+
+pub async fn load_image<T: IntoUrl>(
+    url: T,
+    post_process: fn(::image::RgbaImage) -> ::image::RgbaImage,
+) -> image::Handle {
+    static CACHE: Lazy<Mutex<LruCache<Url, image::Handle>>> =
+        Lazy::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(50).unwrap())));
+
+    let url = url.into_url().unwrap();
+
+    if let Some(handle) = CACHE.lock().get(&url) {
+        return handle.clone();
+    }
+
+    let bytes = reqwest::get(url.clone())
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+
+    let handle = tokio::task::spawn_blocking(move || {
+        eprintln!("parsing image");
+        let img = ::image::load_from_memory(&bytes).unwrap();
+        eprintln!("post processing");
+        let data = post_process(img.into_rgba8());
+        let (h, w) = data.dimensions();
+        image::Handle::from_pixels(h, w, data.into_raw())
+    })
+    .await
+    .unwrap();
+
+    CACHE.lock().push(url.clone(), handle.clone());
+
+    handle
 }
 
 pub fn find_musicbrainz_artist<M: 'static>(

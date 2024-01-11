@@ -1,3 +1,6 @@
 [home-assistant]
 uri = "http://192.168.1.100/"
 token = "abcdef"
+
+[spotify]
+token = "abcdef"
