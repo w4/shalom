@@ -14,11 +14,17 @@ mod widgets;
 use std::sync::Arc;
 
 use iced::{
-    widget::{column, Column},
-    window, Application, Command, Element, Renderer, Settings, Subscription, Theme,
+    alignment::{Horizontal, Vertical},
+    widget::{container, Column},
+    window, Application, Command, Element, Length, Renderer, Settings, Subscription, Theme,
 };
 
-use crate::{config::Config, oracle::Oracle, theme::Image, widgets::context_menu::ContextMenu};
+use crate::{
+    config::Config,
+    oracle::Oracle,
+    theme::Image,
+    widgets::{context_menu::ContextMenu, spinner::CupertinoSpinner},
+};
 
 pub struct Shalom {
     page: ActivePage,
@@ -264,7 +270,13 @@ impl Application for Shalom {
 
     fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
         let page_content = match &self.page {
-            ActivePage::Loading => Element::from(column!["Loading...",].spacing(20)),
+            ActivePage::Loading => Element::from(
+                container(CupertinoSpinner::new().width(40.into()).height(40.into()))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center),
+            ),
             ActivePage::Room(room) => room.view(&self.theme).map(Message::RoomEvent),
             ActivePage::Omni(omni) => omni.view().map(Message::OmniEvent),
         };
