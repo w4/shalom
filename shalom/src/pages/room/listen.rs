@@ -356,10 +356,14 @@ impl SearchState {
         matches!(self, Self::Open { search, .. } if !search.is_empty())
     }
 
-    pub fn results(&self) -> &[SearchResult] {
+    pub fn results(&self) -> Option<&[SearchResult]> {
         match self {
-            Self::Open { results, .. } => results.as_slice(),
-            Self::Closed => &[],
+            Self::Open {
+                results,
+                needs_result,
+                ..
+            } => (!needs_result).then_some(results.as_slice()),
+            Self::Closed => None,
         }
     }
 

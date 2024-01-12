@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use iced::{
+    alignment::Horizontal,
     theme,
     widget::{
         column, component, container, container::Appearance, horizontal_rule, image, image::Handle,
@@ -9,9 +10,9 @@ use iced::{
     Alignment, Background, Color, Element, Length, Renderer, Theme,
 };
 
-use crate::widgets::mouse_area::mouse_area;
+use crate::widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner};
 
-pub fn search<M: Clone + 'static>(theme: Theme, results: &[SearchResult]) -> Search<'_, M> {
+pub fn search<M: Clone + 'static>(theme: Theme, results: Option<&[SearchResult]>) -> Search<'_, M> {
     Search {
         on_track_press: None,
         theme,
@@ -22,7 +23,7 @@ pub fn search<M: Clone + 'static>(theme: Theme, results: &[SearchResult]) -> Sea
 pub struct Search<'a, M> {
     on_track_press: Option<fn(String) -> M>,
     theme: Theme,
-    results: &'a [SearchResult],
+    results: Option<&'a [SearchResult]>,
 }
 
 impl<M> Search<'_, M> {
@@ -43,20 +44,30 @@ impl<M: Clone + 'static> Component<M, Renderer> for Search<'_, M> {
     }
 
     fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let mut col = Column::new();
+        let col = if let Some(results) = self.results {
+            let mut col = Column::new();
 
-        for (i, result) in self.results.iter().enumerate() {
-            if i != 0 {
-                col = col.push(hr());
+            for (i, result) in results.iter().enumerate() {
+                if i != 0 {
+                    col = col.push(hr());
+                }
+
+                let track = mouse_area(search_item_container(result_card(result, &self.theme)))
+                    .on_press(Event::OnTrackPress(result.uri.to_string()));
+
+                col = col.push(track);
             }
 
-            let track = mouse_area(search_item_container(result_card(result, &self.theme)))
-                .on_press(Event::OnTrackPress(result.uri.to_string()));
+            Element::from(scrollable(col.spacing(10)))
+        } else {
+            Element::from(
+                container(CupertinoSpinner::new().width(40.into()).height(40.into()))
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center),
+            )
+        };
 
-            col = col.push(track);
-        }
-
-        search_container(scrollable(col.spacing(10)))
+        search_container(col)
     }
 }
 
