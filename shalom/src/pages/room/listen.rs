@@ -69,7 +69,7 @@ impl Listen {
 
                 header_search(
                     Message::OnSearchTerm,
-                    Message::OnSearchVisibleChange,
+                    Message::OnSearchVisibleToggle,
                     open,
                     query,
                     text.clone(),
@@ -180,8 +180,8 @@ impl Listen {
                 self.search = self.search.open(v);
                 None
             }
-            Message::OnSearchVisibleChange(v) => {
-                self.search = if v {
+            Message::OnSearchVisibleToggle => {
+                self.search = if matches!(self.search, SearchState::Closed) {
                     SearchState::Open {
                         search: String::new(),
                         results_search: String::new(),
@@ -421,7 +421,7 @@ pub enum Message {
     OnSpeakerNextTrack,
     OnSpeakerPreviousTrack,
     OnSearchTerm(String),
-    OnSearchVisibleChange(bool),
+    OnSearchVisibleToggle,
     SpotifySearchResult((SearchResult, String)),
     SpotifySearchResultError((String, String)),
     OnPlayTrack(String),

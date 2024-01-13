@@ -1394,6 +1394,7 @@ dependencies = [
  "iced_renderer",
  "iced_runtime",
  "iced_style",
+ "keyframe",
  "num-traits",
  "ouroboros",
  "thiserror",

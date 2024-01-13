@@ -27,7 +27,7 @@ const INITIAL_SEARCH_BOX_SIZE: Size = Size::new(78., 78.);
 
 pub fn header_search<'a, M>(
     on_input: fn(String) -> M,
-    on_state_change: fn(bool) -> M,
+    open_state_toggle: M,
     open: bool,
     search_query: &str,
     mut header: Text<'a, Renderer>,
@@ -49,12 +49,13 @@ where
         original_header: header.clone(),
         header,
         current_search_box_size,
+        open,
+        open_state_toggle,
         input: iced::widget::text_input("Search...", search_query)
             .id(Id::unique())
             .on_input(on_input)
             .style(iced::theme::TextInput::Custom(Box::new(InputStyle)))
             .into(),
-        on_state_change,
         search_icon: Element::from(Icon::Search.canvas(Color::BLACK)),
         close_icon: Element::from(Icon::Close.canvas(Color::BLACK)),
         dy_mult,
@@ -72,11 +73,12 @@ pub struct HeaderSearch<'a, M> {
     original_header: Text<'a, Renderer>,
     header: Text<'a, Renderer>,
     current_search_box_size: BoxSize,
-    on_state_change: fn(bool) -> M,
     input: Element<'a, M, Renderer>,
     search_icon: Element<'a, M, Renderer>,
     close_icon: Element<'a, M, Renderer>,
     dy_mult: f32,
+    open: bool,
+    open_state_toggle: M,
 }
 
 impl<'a, M> Widget<M, Renderer> for HeaderSearch<'a, M>
@@ -219,9 +221,10 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn on_event(
         &mut self,
-        state: &mut Tree,
+        tree_state: &mut Tree,
         event: iced::Event,
         layout: Layout<'_>,
         cursor: Cursor,
@@ -230,6 +233,20 @@ where
         shell: &mut Shell<'_, M>,
         viewport: &Rectangle,
     ) -> Status {
+        let state = tree_state.state.downcast_mut::<State>();
+
+        match state {
+            State::Open if !self.open => {
+                *state = State::close();
+                shell.request_redraw(RedrawRequest::NextFrame);
+            }
+            State::Closed if self.open => {
+                *state = State::open();
+                shell.request_redraw(RedrawRequest::NextFrame);
+            }
+            _ => {}
+        }
+
         let status = match event {
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(mouse::Button::Left))
             | iced::Event::Touch(iced::touch::Event::FingerPressed { .. })
@@ -244,13 +261,13 @@ where
                         .bounds(),
                 ) =>
             {
-                let state = state.state.downcast_mut::<State>();
-                *state = state.clone().flip();
-                shell.request_redraw(RedrawRequest::NextFrame);
+                if !matches!(state, State::Animate { .. }) {
+                    shell.publish(self.open_state_toggle.clone());
+                }
+
                 Status::Captured
             }
             iced::Event::Window(iced::window::Event::RedrawRequested(_)) => {
-                let state = state.state.downcast_mut::<State>();
                 let State::Animate {
                     last_draw,
                     next_state,
@@ -301,11 +318,9 @@ where
 
                     match &state {
                         State::Open => {
-                            shell.publish((self.on_state_change)(true));
                             self.current_search_box_size = BoxSize::Fill;
                         }
                         State::Closed => {
-                            shell.publish((self.on_state_change)(false));
                             self.current_search_box_size = BoxSize::Min;
                         }
                         State::Animate { .. } => {}
@@ -321,7 +336,7 @@ where
 
         if status == Status::Ignored {
             self.input.as_widget_mut().on_event(
-                &mut state.children[0],
+                &mut tree_state.children[0],
                 event,
                 layout.children().nth(1).unwrap().children().nth(1).unwrap(),
                 cursor,
@@ -396,25 +411,25 @@ pub enum State {
 }
 
 impl State {
-    fn flip(self) -> Self {
-        match self {
-            State::Closed => Self::Animate {
-                last_draw: Instant::now(),
-                next_state: Box::new(State::Open),
-                text_opacity: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
-                search_box_size: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
-                search_icon: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
-                close_icon: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
-            },
-            State::Open => Self::Animate {
-                last_draw: Instant::now(),
-                next_state: Box::new(State::Closed),
-                text_opacity: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
-                search_box_size: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
-                search_icon: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
-                close_icon: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
-            },
-            v @ State::Animate { .. } => v,
+    fn open() -> Self {
+        Self::Animate {
+            last_draw: Instant::now(),
+            next_state: Box::new(State::Open),
+            text_opacity: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
+            search_box_size: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
+            search_icon: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
+            close_icon: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
+        }
+    }
+
+    fn close() -> Self {
+        Self::Animate {
+            last_draw: Instant::now(),
+            next_state: Box::new(State::Closed),
+            text_opacity: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
+            search_box_size: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
+            search_icon: keyframes![(0.0, 0.0, EaseOutQuint), (0.0, 0.1), (1.0, 0.5)],
+            close_icon: keyframes![(1.0, 0.0, EaseOutQuint), (0.0, 0.5)],
         }
     }
 }

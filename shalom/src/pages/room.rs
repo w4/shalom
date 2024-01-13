@@ -36,6 +36,7 @@ pub struct Room {
     listen: listen::Listen,
     current_page: Page,
     dy: f32,
+    pending_visible_toggle: bool,
 }
 
 impl Room {
@@ -49,6 +50,7 @@ impl Room {
             room,
             current_page: Page::Listen,
             dy: 0.0,
+            pending_visible_toggle: false,
         }
     }
 
@@ -59,15 +61,37 @@ impl Room {
     pub fn update(&mut self, event: Message) -> Option<Event> {
         match event {
             Message::Lights(v) => self.lights.update(v).map(Event::Lights),
+            Message::Listen(listen::Message::OnSearchVisibleToggle)
+                if self.listen.search.is_open() && self.dy > 0.0 =>
+            {
+                // intercept search toggles on listen so we can scroll our scrollable to
+                // the top first
+                self.pending_visible_toggle = true;
+                None
+            }
             Message::Listen(v) => self.listen.update(v).map(Event::Listen),
             Message::ChangePage(page) => {
+                self.dy = 0.0;
                 self.current_page = page;
                 None
             }
-            Message::Exit => Some(Event::Exit),
+            Message::Exit => {
+                self.dy = 0.0;
+                Some(Event::Exit)
+            }
             Message::OnContentScroll(viewport) => {
                 self.dy = viewport.absolute_offset().y;
                 None
+            }
+            Message::OnContentAnimateFinished => {
+                if self.pending_visible_toggle {
+                    self.pending_visible_toggle = false;
+                    self.listen
+                        .update(listen::Message::OnSearchVisibleToggle)
+                        .map(Event::Listen)
+                } else {
+                    None
+                }
             }
         }
     }
@@ -120,7 +144,6 @@ impl Room {
             .spacing(20.0 * (1.0 - padding_mult))
             .push(header);
 
-        // TODO: on close, we need to animate the scrollback by padding the container up to dy
         if needs_scrollable {
             current = scrollable(container(current).width(Length::Fill).padding([
                 f32::from(PADDING + 30) * padding_mult,
@@ -132,6 +155,8 @@ impl Room {
                 Properties::default().scroller_width(0).width(0),
             ))
             .on_scroll(Message::OnContentScroll)
+            .on_animate_finished(Message::OnContentAnimateFinished)
+            .scroll_to_top(self.pending_visible_toggle)
             .into();
         }
 
@@ -183,5 +208,6 @@ pub enum Message {
     Listen(listen::Message),
     ChangePage(Page),
     OnContentScroll(Viewport),
+    OnContentAnimateFinished,
     Exit,
 }
