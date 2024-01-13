@@ -8,7 +8,8 @@ use iced::{
     alignment::Horizontal,
     theme::{Container, Slider, Svg, Text},
     widget::{
-        column as icolumn, component, container, image::Handle, row, slider, svg, text, Component,
+        column as icolumn, component, container, image::Handle, mouse_area, row, slider, svg, text,
+        Component,
     },
     Alignment, Background, Color, Length, Renderer, Theme,
 };
@@ -20,7 +21,6 @@ use crate::{
         colours::{SKY_500, SLATE_400},
         Icon,
     },
-    widgets::mouse_area::mouse_area,
 };
 
 pub fn media_player<M>(device: MediaPlayerSpeaker, album_art: Option<Handle>) -> MediaPlayer<M> {

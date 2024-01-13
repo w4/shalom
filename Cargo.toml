@@ -3,6 +3,9 @@ resolver = "2"
 members = [
     "shalom"
 ]
+exclude = [
+    "iced"
+]
 
 [profile.dev.package.image]
 opt-level = 3

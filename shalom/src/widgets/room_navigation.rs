@@ -3,11 +3,12 @@ use iced::{
     alignment::Vertical,
     font::{Stretch, Weight},
     theme,
-    widget::{column, component, container, horizontal_rule, rule, svg, text, Component},
+    widget::{
+        column, component, container, horizontal_rule, mouse_area, rule, svg, text, Component,
+    },
     Alignment, Background, Color, ContentFit, Font, Length, Renderer, Theme,
 };
 
-use super::mouse_area::mouse_area;
 use crate::theme::{
     colours::{SKY_500, SLATE_200},
     Icon,

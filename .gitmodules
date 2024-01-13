@@ -1,0 +1,3 @@
+[submodule "iced"]
+	path = iced
+	url = https://github.com/JordanForks/iced

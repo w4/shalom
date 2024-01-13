@@ -6,16 +6,13 @@ use iced::{
     alignment::Vertical,
     font::Weight,
     theme::{Container, Svg},
-    widget::{component, container, row, svg, text},
+    widget::{component, container, mouse_area, row, svg, text},
     Alignment, Background, Color, Element, Font, Length, Renderer, Theme,
 };
 
-use crate::{
-    theme::{
-        colours::{ORANGE, SYSTEM_GRAY6},
-        Icon,
-    },
-    widgets::mouse_area::mouse_area,
+use crate::theme::{
+    colours::{ORANGE, SYSTEM_GRAY6},
+    Icon,
 };
 
 pub const LONG_PRESS_LENGTH: Duration = Duration::from_millis(350);

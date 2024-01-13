@@ -4,13 +4,13 @@ use iced::{
     alignment::Horizontal,
     theme,
     widget::{
-        column, component, container, container::Appearance, image, image::Handle, row, text,
-        Column, Component,
+        column, component, container, container::Appearance, image, image::Handle, mouse_area, row,
+        text, Column, Component,
     },
     Alignment, Background, Color, Element, Length, Renderer, Theme,
 };
 
-use crate::widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner};
+use crate::widgets::spinner::CupertinoSpinner;
 
 pub fn search<M: Clone + 'static>(theme: Theme, results: SearchState<'_>) -> Search<'_, M> {
     Search {
