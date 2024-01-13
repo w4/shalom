@@ -11,11 +11,15 @@ mod subscriptions;
 mod theme;
 mod widgets;
 
-use std::sync::Arc;
+use std::{
+    collections::BTreeMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{container, Column},
+    widget::container,
     window, Application, Command, Element, Length, Renderer, Settings, Size, Subscription, Theme,
 };
 
@@ -23,7 +27,12 @@ use crate::{
     config::Config,
     oracle::Oracle,
     theme::Image,
-    widgets::{context_menu::ContextMenu, spinner::CupertinoSpinner},
+    widgets::{
+        context_menu::ContextMenu,
+        floating_element::{Anchor, FloatingElement},
+        spinner::CupertinoSpinner,
+        toast::{Toast, ToastElement},
+    },
 };
 
 pub struct Shalom {
@@ -33,9 +42,20 @@ pub struct Shalom {
     home_room: Option<&'static str>,
     theme: Theme,
     config: Option<Arc<Config>>,
+    toast: BTreeMap<u8, Toast>,
 }
 
 impl Shalom {
+    fn push_toast(&mut self, toast: Toast) {
+        let highest_key = self
+            .toast
+            .last_key_value()
+            .map(|(i, _)| *i)
+            .unwrap_or_default();
+
+        self.toast.insert(highest_key, toast);
+    }
+
     fn build_home_route(&self) -> ActivePage {
         self.home_room.map_or_else(
             || self.build_omni_route(),
@@ -95,7 +115,7 @@ impl Shalom {
         }
     }
 
-    fn handle_listen_event(&self, event: pages::room::listen::Event) -> Command<Message> {
+    fn handle_listen_event(&mut self, event: pages::room::listen::Event) -> Command<Message> {
         match event {
             pages::room::listen::Event::SetSpeakerVolume(id, new) => {
                 let oracle = self.oracle.as_ref().unwrap().clone();
@@ -171,6 +191,12 @@ impl Shalom {
             pages::room::listen::Event::PlayTrack(id, uri) => {
                 let oracle = self.oracle.as_ref().unwrap().clone();
 
+                self.push_toast(Toast {
+                    text: "Song added to queue".to_string(),
+                    start: Instant::now(),
+                    ttl: Duration::from_secs(5),
+                });
+
                 Command::perform(
                     async move { oracle.speaker(id).play_track(uri).await },
                     Message::PlayTrackResult,
@@ -194,6 +220,7 @@ impl Application for Shalom {
             home_room: Some("living_room"),
             theme: Theme::default(),
             config: None,
+            toast: BTreeMap::new(),
         };
 
         // this is only best-effort to try and prevent blocking when loading
@@ -264,6 +291,10 @@ impl Application for Shalom {
                     None => Command::none(),
                 }
             }
+            (Message::ToastTtlExpired(k), _, _) => {
+                self.toast.remove(&k);
+                Command::none()
+            }
             _ => Command::none(),
         }
     }
@@ -281,7 +312,19 @@ impl Application for Shalom {
             ActivePage::Omni(omni) => omni.view().map(Message::OmniEvent),
         };
 
-        let content = Column::new().push(page_content);
+        let mut content = Element::from(page_content);
+
+        for (i, (idx, toast)) in self.toast.iter().enumerate() {
+            let offs = f32::from(u8::try_from(i).unwrap_or(u8::MAX));
+
+            content = FloatingElement::new(
+                content,
+                ToastElement::new(toast).on_expiry(Message::ToastTtlExpired(*idx)),
+            )
+            .anchor(Anchor::SouthEast)
+            .offset([20.0, 20.0 + (80.0 * offs)])
+            .into();
+        }
 
         if let Some(context_menu) = &self.context_menu {
             let context_menu = match context_menu {
@@ -292,7 +335,7 @@ impl Application for Shalom {
                 .on_close(Message::CloseContextMenu)
                 .into()
         } else {
-            content.into()
+            content
         }
     }
 
@@ -321,6 +364,7 @@ pub enum Message {
     LightControlMenu(context_menus::light_control::Message),
     UpdateLightResult(()),
     PlayTrackResult(()),
+    ToastTtlExpired(u8),
 }
 
 #[derive(Debug)]
