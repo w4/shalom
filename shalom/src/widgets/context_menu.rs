@@ -17,7 +17,7 @@ use iced::{
     window,
     window::RedrawRequest,
     Alignment, BorderRadius, Color, Element, Event, Length, Point, Rectangle, Renderer, Size,
-    Theme,
+    Theme, Vector,
 };
 use keyframe::{functions::EaseOutQuint, keyframes, AnimationSequence};
 
@@ -50,16 +50,12 @@ impl<'a, M> ContextMenu<'a, M> {
 }
 
 impl<'a, M: Clone> Widget<M, Renderer> for ContextMenu<'a, M> {
-    fn width(&self) -> Length {
-        self.base.as_widget().width()
+    fn size(&self) -> Size<Length> {
+        self.base.as_widget().size()
     }
 
-    fn height(&self) -> Length {
-        self.base.as_widget().height()
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
-        self.base.as_widget().layout(renderer, limits)
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
+        self.base.as_widget().layout(tree, renderer, limits)
     }
 
     fn draw(
@@ -303,22 +299,28 @@ impl<'a, 'b, M: Clone> Overlay<'a, 'b, M> {
 }
 
 impl<'a, 'b, M: Clone> overlay::Overlay<M, Renderer> for Overlay<'a, 'b, M> {
-    fn layout(&self, renderer: &Renderer, bounds: Size, position: Point) -> Node {
+    fn layout(
+        &mut self,
+        renderer: &Renderer,
+        bounds: Size,
+        position: Point,
+        _translation: Vector,
+    ) -> Node {
         let limits = Limits::new(Size::ZERO, bounds)
             .width(Length::Fill)
             .height(Length::Fill);
 
-        let mut child = self.content.as_widget().layout(renderer, &limits);
-        child.align(Alignment::Start, Alignment::Start, limits.max());
-        child.move_to(Point {
-            x: 0.0,
-            y: bounds.height - self.state.height,
-        });
+        let child = self
+            .content
+            .as_widget()
+            .layout(self.tree, renderer, &limits)
+            .align(Alignment::Start, Alignment::Start, limits.max())
+            .move_to(Point {
+                x: 0.0,
+                y: bounds.height - self.state.height,
+            });
 
-        let mut node = Node::with_children(bounds, vec![child]);
-        node.move_to(position);
-
-        node
+        Node::with_children(bounds, vec![child]).move_to(position)
     }
 
     fn draw(
@@ -421,7 +423,7 @@ impl<'a, 'b, M: Clone> overlay::Overlay<M, Renderer> for Overlay<'a, 'b, M> {
                     shell.request_redraw(RedrawRequest::NextFrame);
                 }
             }
-        } else if let Event::Window(window::Event::RedrawRequested(_)) = &event {
+        } else if let Event::Window(_, window::Event::RedrawRequested(_)) = &event {
             self.handle_redraw(shell, cursor);
         }
 

@@ -1,16 +1,18 @@
 use iced::{
     advanced::{
+        graphics::text::Paragraph,
         layout::{Limits, Node},
         renderer::{Quad, Style},
         svg::Renderer as SvgRenderer,
-        text::{LineHeight, Renderer as TextRenderer, Shaping},
-        widget::Tree,
-        Layout, Renderer as AdvancedRenderer, Text, Widget,
+        text::{LineHeight, Shaping},
+        widget::{tree::Tag, Tree},
+        Layout, Renderer as AdvancedRenderer, Widget,
     },
     alignment::{Horizontal, Vertical},
     font::Weight,
     gradient::Linear,
     mouse::Cursor,
+    widget::{text, text::Appearance},
     Alignment, Background, Color, Degrees, Element, Font, Gradient, Length, Rectangle, Renderer,
     Size, Theme,
 };
@@ -47,54 +49,62 @@ impl<M> WeatherCard<M> {
 }
 
 impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
-    fn width(&self) -> Length {
-        Length::Fixed(192.)
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Fixed(192.0), Length::Fixed(192.0))
     }
 
-    fn height(&self) -> Length {
-        Length::Fixed(192.)
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
-        let padding = 16.into();
-
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let limits = limits
-            .height(self.height())
-            .width(self.width())
-            .pad(padding);
-        let container_size = limits.resolve(Size::ZERO);
+            .height(self.size().height)
+            .width(self.size().width)
+            .shrink([32, 32]);
+        let container_size = limits.resolve(self.size().width, self.size().height, Size::ZERO);
 
-        let mut header_node = Node::new(renderer.measure(
+        let local_state = tree.state.downcast_mut::<State>();
+        let header_node = text::layout(
+            &mut local_state.header,
+            renderer,
+            &limits,
+            Length::Shrink,
+            Length::Shrink,
             &self.build_temperature(),
-            42.,
             LineHeight::default(),
-            Font {
+            Some(42.0.into()),
+            Some(Font {
                 weight: Weight::Normal,
                 ..Font::with_name("Helvetica Neue")
-            },
-            container_size,
+            }),
+            Horizontal::Left,
+            Vertical::Top,
             Shaping::Basic,
-        ));
-        header_node.move_to([padding.top, padding.left].into());
-        header_node.align(Alignment::Start, Alignment::Start, container_size);
+        )
+        .move_to([16., 16.])
+        .align(Alignment::Start, Alignment::Start, container_size);
 
-        let mut icon_node =
-            Node::new(Size::new(16., 16.)).translate([padding.left, -padding.bottom - 32.].into());
-        icon_node.align(Alignment::Start, Alignment::End, container_size);
+        let icon_node = Node::new(Size::new(16., 16.)).translate([16., -48.]).align(
+            Alignment::Start,
+            Alignment::End,
+            container_size,
+        );
 
-        let mut conditions_node = Node::new(renderer.measure(
+        let conditions_node = text::layout(
+            &mut local_state.conditions,
+            renderer,
+            &limits,
+            Length::Shrink,
+            Length::Shrink,
             &self.build_conditions(),
-            12.,
             LineHeight::default(),
-            Font {
+            Some(12.0.into()),
+            Some(Font {
                 weight: Weight::Bold,
                 ..Font::with_name("Helvetica Neue")
-            },
-            container_size,
+            }),
+            Horizontal::Left,
+            Vertical::Bottom,
             Shaping::Basic,
-        ))
-        .translate([padding.left, -padding.bottom].into());
-        conditions_node.align(Alignment::Start, Alignment::End, container_size);
+        )
+        .move_to([16., -16.]);
 
         Node::with_children(
             container_size,
@@ -104,16 +114,17 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
 
     fn draw(
         &self,
-        _state: &Tree,
+        state: &Tree,
         renderer: &mut Renderer,
         _theme: &Theme,
-        _style: &Style,
+        style: &Style,
         layout: Layout<'_>,
         _cursor: Cursor,
-        _viewport: &Rectangle,
+        viewport: &Rectangle,
     ) {
         // TODO: get sunrise/sunset from somewhere reasonable
         let day_time = matches!(OffsetDateTime::now_utc().hour(), 5..=19);
+        let local_state = state.state.downcast_ref::<State>();
 
         let gradient = if day_time {
             Linear::new(Degrees(90.))
@@ -137,41 +148,49 @@ impl<M: Clone> Widget<M, Renderer> for WeatherCard<M> {
 
         let mut children = layout.children();
 
-        renderer.fill_text(Text {
-            content: &self.build_temperature(),
-            bounds: children.next().unwrap().bounds(),
-            size: 42.,
-            line_height: LineHeight::default(),
-            color: Color::WHITE,
-            font: Font {
-                weight: Weight::Normal,
-                ..Font::with_name("Helvetica Neue")
+        let header_layout = children.next().unwrap();
+        text::draw(
+            renderer,
+            style,
+            header_layout,
+            &local_state.header,
+            Appearance {
+                color: Some(Color::WHITE),
             },
-            horizontal_alignment: Horizontal::Left,
-            vertical_alignment: Vertical::Top,
-            shaping: Shaping::Basic,
-        });
+            viewport,
+        );
 
         let icon_bounds = children.next().unwrap().bounds();
         if let Some(icon) = self.current_weather.weather_condition().icon(day_time) {
             renderer.draw(icon.handle(), None, icon_bounds);
         }
 
-        renderer.fill_text(Text {
-            content: &self.build_conditions(),
-            bounds: children.next().unwrap().bounds(),
-            size: 12.,
-            line_height: LineHeight::default(),
-            color: Color::WHITE,
-            font: Font {
-                weight: Weight::Bold,
-                ..Font::with_name("Helvetica Neue")
+        let conditions_layout = children.next().unwrap();
+        text::draw(
+            renderer,
+            style,
+            conditions_layout,
+            &local_state.conditions,
+            Appearance {
+                color: Some(Color::WHITE),
             },
-            horizontal_alignment: Horizontal::Left,
-            vertical_alignment: Vertical::Top,
-            shaping: Shaping::Basic,
-        });
+            viewport,
+        );
     }
+
+    fn state(&self) -> iced::advanced::widget::tree::State {
+        iced::advanced::widget::tree::State::new(State::default())
+    }
+
+    fn tag(&self) -> Tag {
+        Tag::of::<State>()
+    }
+}
+
+#[derive(Default)]
+pub struct State {
+    header: text::State<Paragraph>,
+    conditions: text::State<Paragraph>,
 }
 
 impl<'a, M> From<WeatherCard<M>> for Element<'a, M>

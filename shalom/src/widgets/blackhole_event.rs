@@ -62,12 +62,13 @@ impl<Message, Renderer: iced::advanced::Renderer> overlay::Overlay<Message, Rend
     }
 
     fn layout(
-        &self,
+        &mut self,
         renderer: &Renderer,
         bounds: iced::Size,
         _position: iced::Point,
+        translation: Vector,
     ) -> iced::advanced::layout::Node {
-        self.overlay.layout(renderer, bounds, Vector::ZERO)
+        self.overlay.layout(renderer, bounds, translation)
     }
 
     fn draw(

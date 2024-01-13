@@ -12,7 +12,7 @@ use iced::{
     },
     event::Status,
     mouse::{Cursor, Interaction},
-    Background, Color, Event, Length, Point, Rectangle, Size,
+    Background, Color, Event, Length, Point, Rectangle, Size, Vector,
 };
 
 pub fn forced_rounded<'a, M: 'a, R>(
@@ -28,16 +28,12 @@ pub struct ForcedRounded<'a, M, R> {
 }
 
 impl<'a, M, R: Renderer> Widget<M, R> for ForcedRounded<'a, M, R> {
-    fn width(&self) -> Length {
-        self.element.as_widget().width()
+    fn size(&self) -> Size<Length> {
+        self.element.as_widget().size()
     }
 
-    fn height(&self) -> Length {
-        self.element.as_widget().height()
-    }
-
-    fn layout(&self, renderer: &R, limits: &Limits) -> Node {
-        self.element.as_widget().layout(renderer, limits)
+    fn layout(&self, tree: &mut Tree, renderer: &R, limits: &Limits) -> Node {
+        self.element.as_widget().layout(tree, renderer, limits)
     }
 
     fn draw(
@@ -144,11 +140,14 @@ pub struct Overlay {
 }
 
 impl<M, R: Renderer> overlay::Overlay<M, R> for Overlay {
-    fn layout(&self, _renderer: &R, _bounds: Size, position: Point) -> Node {
-        let mut node = Node::new(self.size);
-        node.move_to(self.position.unwrap_or(position));
-
-        node
+    fn layout(
+        &mut self,
+        _renderer: &R,
+        _bounds: Size,
+        position: Point,
+        _translation: Vector,
+    ) -> Node {
+        Node::new(self.size).move_to(self.position.unwrap_or(position))
     }
 
     fn draw(

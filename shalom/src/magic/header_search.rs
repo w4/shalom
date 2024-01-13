@@ -43,12 +43,9 @@ where
         }));
     }
 
-    let current_search_box_size = if open { BoxSize::Fill } else { BoxSize::Min };
-
     HeaderSearch {
         original_header: header.clone(),
         header,
-        current_search_box_size,
         open,
         open_state_toggle,
         input: iced::widget::text_input("Search...", search_query)
@@ -62,17 +59,9 @@ where
     }
 }
 
-#[derive(Debug)]
-pub enum BoxSize {
-    Fill,
-    Min,
-    Fixed(Size),
-}
-
 pub struct HeaderSearch<'a, M> {
     original_header: Text<'a, Renderer>,
     header: Text<'a, Renderer>,
-    current_search_box_size: BoxSize,
     input: Element<'a, M, Renderer>,
     search_icon: Element<'a, M, Renderer>,
     close_icon: Element<'a, M, Renderer>,
@@ -85,56 +74,70 @@ impl<'a, M> Widget<M, Renderer> for HeaderSearch<'a, M>
 where
     M: Clone + 'a,
 {
-    fn width(&self) -> Length {
-        Length::Fill
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Shrink, Length::Shrink)
     }
 
-    fn height(&self) -> Length {
-        Length::Shrink
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let text_node = <iced::advanced::widget::Text<'_, Renderer> as Widget<M, Renderer>>::layout(
             &self.original_header,
+            &mut tree.children[0],
             renderer,
             limits,
         );
 
         let size = limits.height(Length::Fixed(text_node.size().height)).max();
 
-        let current_search_box_size = match self.current_search_box_size {
-            BoxSize::Fixed(size) => size,
-            BoxSize::Min => INITIAL_SEARCH_BOX_SIZE,
-            BoxSize::Fill => Size {
+        let state = tree.state.downcast_mut::<State>();
+        match (&state, self.open) {
+            (State::Open, false) => {
+                *state = State::close();
+            }
+            (State::Closed, true) => {
+                *state = State::open();
+            }
+            _ => {}
+        }
+
+        let current_search_box_size = match &state {
+            State::Animate {
+                search_box_size, ..
+            } => Size {
+                width: INITIAL_SEARCH_BOX_SIZE.width
+                    + ((size.width - INITIAL_SEARCH_BOX_SIZE.width) * search_box_size.now()),
+                ..INITIAL_SEARCH_BOX_SIZE
+            },
+            State::Closed => INITIAL_SEARCH_BOX_SIZE,
+            State::Open => Size {
                 width: limits.max().width,
                 ..INITIAL_SEARCH_BOX_SIZE
             },
         };
 
         let search_icon_size = Size::new(36., 36.);
-        let mut search_icon_node = Node::new(search_icon_size).translate(Vector {
-            x: -(INITIAL_SEARCH_BOX_SIZE.width - search_icon_size.width) / 2.0,
-            y: 0.0,
-        });
-        search_icon_node.align(Alignment::End, Alignment::Center, current_search_box_size);
+        let search_icon_node = Node::new(search_icon_size)
+            .translate(Vector {
+                x: -(INITIAL_SEARCH_BOX_SIZE.width - search_icon_size.width) / 2.0,
+                y: 0.0,
+            })
+            .align(Alignment::End, Alignment::Center, current_search_box_size);
 
-        let mut search_input = self
+        let search_input = self
             .input
             .as_widget()
             .layout(
+                &mut tree.children[1],
                 renderer,
-                &limits
-                    .width(current_search_box_size.width)
-                    .pad([0, 20, 0, 60].into()),
+                &limits.width(current_search_box_size.width).shrink([80, 20]),
             )
-            .translate(Vector { x: 20.0, y: 0.0 });
-        search_input.align(Alignment::Start, Alignment::Center, current_search_box_size);
+            .translate(Vector { x: 20.0, y: 0.0 })
+            .align(Alignment::Start, Alignment::Center, current_search_box_size);
 
-        let mut search_box = Node::with_children(
+        let search_box = Node::with_children(
             current_search_box_size,
             vec![search_icon_node, search_input],
-        );
-        search_box.align(Alignment::End, Alignment::Center, size);
+        )
+        .align(Alignment::End, Alignment::Center, size);
 
         Node::with_children(size, vec![text_node, search_box])
     }
@@ -157,7 +160,7 @@ where
 
         <iced::advanced::widget::Text<'_, Renderer> as Widget<M, Renderer>>::draw(
             &self.header,
-            state,
+            &state.children[0],
             renderer,
             theme,
             style,
@@ -166,7 +169,7 @@ where
             viewport,
         );
 
-        let border_radius = if matches!(self.current_search_box_size, BoxSize::Fill) {
+        let border_radius = if matches!(local_state, State::Open) {
             100.0 * (1.0 - self.dy_mult)
         } else {
             100.0
@@ -186,18 +189,6 @@ where
 
         if !matches!(local_state, State::Open) {
             self.search_icon.as_widget().draw(
-                &state.children[1],
-                renderer,
-                theme,
-                style,
-                icon_bounds,
-                cursor,
-                viewport,
-            );
-        }
-
-        if !matches!(local_state, State::Closed) {
-            self.close_icon.as_widget().draw(
                 &state.children[2],
                 renderer,
                 theme,
@@ -209,8 +200,20 @@ where
         }
 
         if !matches!(local_state, State::Closed) {
+            self.close_icon.as_widget().draw(
+                &state.children[3],
+                renderer,
+                theme,
+                style,
+                icon_bounds,
+                cursor,
+                viewport,
+            );
+        }
+
+        if !matches!(local_state, State::Closed) {
             self.input.as_widget().draw(
-                &state.children[0],
+                &state.children[1],
                 renderer,
                 theme,
                 style,
@@ -267,7 +270,7 @@ where
 
                 Status::Captured
             }
-            iced::Event::Window(iced::window::Event::RedrawRequested(_)) => {
+            iced::Event::Window(_, iced::window::Event::RedrawRequested(_)) => {
                 let State::Animate {
                     last_draw,
                     next_state,
@@ -294,12 +297,6 @@ where
                     .size(60.0 - (2.0 * (1.0 - text_opacity.now())));
 
                 search_box_size.advance_by(elapsed);
-                self.current_search_box_size = BoxSize::Fixed(Size {
-                    width: INITIAL_SEARCH_BOX_SIZE.width
-                        + ((layout.bounds().width - INITIAL_SEARCH_BOX_SIZE.width)
-                            * search_box_size.now()),
-                    ..INITIAL_SEARCH_BOX_SIZE
-                });
 
                 search_icon.advance_by(elapsed);
                 self.search_icon = Element::from(Icon::Search.canvas(Color {
@@ -315,16 +312,6 @@ where
 
                 if text_opacity.finished() && search_box_size.finished() {
                     *state = std::mem::take(next_state);
-
-                    match &state {
-                        State::Open => {
-                            self.current_search_box_size = BoxSize::Fill;
-                        }
-                        State::Closed => {
-                            self.current_search_box_size = BoxSize::Min;
-                        }
-                        State::Animate { .. } => {}
-                    }
                 }
 
                 shell.request_redraw(RedrawRequest::NextFrame);
@@ -336,7 +323,7 @@ where
 
         if status == Status::Ignored {
             self.input.as_widget_mut().on_event(
-                &mut tree_state.children[0],
+                &mut tree_state.children[1],
                 event,
                 layout.children().nth(1).unwrap().children().nth(1).unwrap(),
                 cursor,
@@ -359,7 +346,7 @@ where
         renderer: &Renderer,
     ) -> Interaction {
         self.input.as_widget().mouse_interaction(
-            &state.children[0],
+            &state.children[1],
             layout.children().nth(1).unwrap().children().nth(1).unwrap(),
             cursor,
             viewport,
@@ -368,13 +355,11 @@ where
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {
-        iced::advanced::widget::tree::State::new(
-            if matches!(self.current_search_box_size, BoxSize::Fill) {
-                State::Open
-            } else {
-                State::Closed
-            },
-        )
+        iced::advanced::widget::tree::State::new(if self.open {
+            State::Open
+        } else {
+            State::Closed
+        })
     }
 
     fn tag(&self) -> Tag {
@@ -383,6 +368,7 @@ where
 
     fn children(&self) -> Vec<Tree> {
         vec![
+            Tree::new(&Element::<'_, M, _>::from(self.header.clone())),
             Tree::new(&self.input),
             Tree::new(&self.search_icon),
             Tree::new(&self.close_icon),
@@ -390,7 +376,12 @@ where
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[&self.input, &self.search_icon, &self.close_icon]);
+        tree.diff_children(&[
+            &Element::from(self.header.clone()),
+            &self.input,
+            &self.search_icon,
+            &self.close_icon,
+        ]);
     }
 }
 

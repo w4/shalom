@@ -14,7 +14,7 @@ use iced::{
     mouse::{Button, Cursor},
     theme::Text,
     touch,
-    widget::{image, text},
+    widget::{image, image::FilterMethod, text},
     Alignment, Background, Color, ContentFit, Degrees, Element, Event, Font, Gradient, Length,
     Point, Rectangle, Renderer, Size, Theme, Vector,
 };
@@ -55,17 +55,13 @@ impl<'a, M> ImageCard<'a, M> {
 }
 
 impl<'a, M: Clone> Widget<M, Renderer> for ImageCard<'a, M> {
-    fn width(&self) -> Length {
-        self.width
+    fn size(&self) -> Size<Length> {
+        Size::new(self.width, self.height)
     }
 
-    fn height(&self) -> Length {
-        self.height
-    }
-
-    fn layout(&self, _renderer: &Renderer, limits: &Limits) -> Node {
+    fn layout(&self, _tree: &mut Tree, _renderer: &Renderer, limits: &Limits) -> Node {
         let limits = limits.width(self.width).height(self.height);
-        let size = limits.resolve(Size::ZERO);
+        let size = limits.resolve(self.width, self.height, Size::ZERO);
 
         Node::new(size)
     }
@@ -104,7 +100,11 @@ impl<'a, M: Clone> Widget<M, Renderer> for ImageCard<'a, M> {
                 ..bounds
             };
 
-            renderer.draw(self.image_handle.clone(), drawing_bounds + offset);
+            renderer.draw(
+                self.image_handle.clone(),
+                FilterMethod::Linear,
+                drawing_bounds + offset,
+            );
         });
     }
 
@@ -154,16 +154,22 @@ struct Overlay<'a, 'b, M> {
 }
 
 impl<'a, 'b, M: Clone> overlay::Overlay<M, Renderer> for Overlay<'a, 'b, M> {
-    fn layout(&self, renderer: &Renderer, _bounds: Size, position: Point) -> Node {
-        let limits = Limits::new(Size::ZERO, self.size).pad([0, 0, 10, 0].into());
+    fn layout(
+        &mut self,
+        renderer: &Renderer,
+        _bounds: Size,
+        position: Point,
+        _translation: Vector,
+    ) -> Node {
+        let limits = Limits::new(Size::ZERO, self.size).shrink([0, 10]);
 
-        let mut child = self.text.as_widget().layout(renderer, &limits);
-        child.align(Alignment::Center, Alignment::End, limits.max());
+        let child = self
+            .text
+            .as_widget()
+            .layout(self.tree, renderer, &limits)
+            .align(Alignment::Center, Alignment::End, limits.max());
 
-        let mut node = Node::with_children(self.size, vec![child]);
-        node.move_to(position);
-
-        node
+        Node::with_children(self.size, vec![child]).move_to(position)
     }
 
     fn draw(

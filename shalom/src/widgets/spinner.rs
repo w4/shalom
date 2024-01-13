@@ -92,20 +92,16 @@ impl CupertinoSpinner {
 }
 
 impl<Message, Theme> Widget<Message, Renderer<Theme>> for CupertinoSpinner {
-    fn width(&self) -> Length {
-        self.width
-    }
-    fn height(&self) -> Length {
-        self.height
+    fn size(&self) -> Size<Length> {
+        Size::new(self.width, self.height)
     }
 
-    fn layout(&self, _renderer: &Renderer<Theme>, limits: &Limits) -> Node {
-        Node::new(
-            limits
-                .width(self.width)
-                .height(self.height)
-                .resolve(Size::new(f32::INFINITY, f32::INFINITY)),
-        )
+    fn layout(&self, _state: &mut Tree, _renderer: &Renderer<Theme>, limits: &Limits) -> Node {
+        Node::new(limits.resolve(
+            self.width,
+            self.height,
+            Size::new(f32::INFINITY, f32::INFINITY),
+        ))
     }
 
     fn draw(
@@ -189,7 +185,7 @@ impl<Message, Theme> Widget<Message, Renderer<Theme>> for CupertinoSpinner {
     ) -> event::Status {
         let state: &mut SpinnerState = state.state.downcast_mut::<SpinnerState>();
 
-        if let Event::Window(window::Event::RedrawRequested(_now)) = &event {
+        if let Event::Window(_, window::Event::RedrawRequested(_now)) = &event {
             state.spinner.clear();
             shell.request_redraw(window::RedrawRequest::NextFrame);
             return event::Status::Captured;

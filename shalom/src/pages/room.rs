@@ -129,7 +129,7 @@ impl Room {
 
             (
                 self.listen
-                    .header_magic(header.clone(), padding_mult)
+                    .header_magic(header, padding_mult)
                     .map(Message::Listen),
                 padding_mult,
             )

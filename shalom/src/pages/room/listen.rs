@@ -5,7 +5,7 @@ use std::{borrow::Cow, convert::identity, iter, sync::Arc, time::Duration};
 use iced::{
     futures::{future, future::Either, stream, stream::FuturesUnordered, FutureExt, StreamExt},
     subscription,
-    widget::{container, image::Handle, lazy, Column, Text},
+    widget::{container, image::Handle, Column, Text},
     Element, Length, Renderer, Subscription, Theme,
 };
 use itertools::Itertools;
@@ -57,25 +57,19 @@ impl Listen {
     }
 
     pub fn header_magic(&self, text: Text<'static>, dy_mult: f32) -> Element<'static, Message> {
-        lazy(
-            (self.search.clone(), dy_mult.to_be_bytes()),
-            move |(search, dy_mult)| {
-                let dy_mult = f32::from_be_bytes(*dy_mult);
-                let (open, query) = if let Some(v) = search.search() {
-                    (true, v)
-                } else {
-                    (false, "")
-                };
+        let (open, query) = if let Some(v) = self.search.search() {
+            (true, v)
+        } else {
+            (false, "")
+        };
 
-                header_search(
-                    Message::OnSearchTerm,
-                    Message::OnSearchVisibleToggle,
-                    open,
-                    query,
-                    text.clone(),
-                    dy_mult,
-                )
-            },
+        header_search(
+            Message::OnSearchTerm,
+            Message::OnSearchVisibleToggle,
+            open,
+            query,
+            text,
+            dy_mult,
         )
         .into()
     }

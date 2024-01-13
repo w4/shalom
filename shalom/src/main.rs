@@ -16,7 +16,7 @@ use std::sync::Arc;
 use iced::{
     alignment::{Horizontal, Vertical},
     widget::{container, Column},
-    window, Application, Command, Element, Length, Renderer, Settings, Subscription, Theme,
+    window, Application, Command, Element, Length, Renderer, Settings, Size, Subscription, Theme,
 };
 
 use crate::{
@@ -340,7 +340,7 @@ fn main() {
     Shalom::run(Settings {
         antialiasing: true,
         window: window::Settings {
-            min_size: Some((600, 600)),
+            min_size: Some(Size::new(600.0, 600.0)),
             ..window::Settings::default()
         },
         ..Settings::default()
