@@ -12,7 +12,7 @@ use iced::{
 
 use crate::widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner};
 
-pub fn search<M: Clone + 'static>(theme: Theme, results: Option<&[SearchResult]>) -> Search<'_, M> {
+pub fn search<M: Clone + 'static>(theme: Theme, results: SearchState<'_>) -> Search<'_, M> {
     Search {
         on_track_press: None,
         theme,
@@ -23,7 +23,7 @@ pub fn search<M: Clone + 'static>(theme: Theme, results: Option<&[SearchResult]>
 pub struct Search<'a, M> {
     on_track_press: Option<fn(String) -> M>,
     theme: Theme,
-    results: Option<&'a [SearchResult]>,
+    results: SearchState<'a>,
 }
 
 impl<M> Search<'_, M> {
@@ -44,27 +44,38 @@ impl<M: Clone + 'static> Component<M, Renderer> for Search<'_, M> {
     }
 
     fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let col = if let Some(results) = self.results {
-            let mut col = Column::new();
+        let col = match self.results {
+            SearchState::Ready(results) if !results.is_empty() => {
+                let mut col = Column::new();
 
-            for (i, result) in results.iter().enumerate() {
-                if i != 0 {
-                    col = col.push(hr());
+                for (i, result) in results.iter().enumerate() {
+                    if i != 0 {
+                        col = col.push(hr());
+                    }
+
+                    let track = mouse_area(search_item_container(result_card(result, &self.theme)))
+                        .on_press(Event::OnTrackPress(result.uri.to_string()));
+
+                    col = col.push(track);
                 }
 
-                let track = mouse_area(search_item_container(result_card(result, &self.theme)))
-                    .on_press(Event::OnTrackPress(result.uri.to_string()));
-
-                col = col.push(track);
+                Element::from(scrollable(col.spacing(10)))
             }
-
-            Element::from(scrollable(col.spacing(10)))
-        } else {
-            Element::from(
+            SearchState::Ready(_) => Element::from(
+                container(text("No results found"))
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center),
+            ),
+            SearchState::Error(error) => Element::from(
+                container(text(error))
+                    .width(Length::Fill)
+                    .align_x(Horizontal::Center),
+            ),
+            SearchState::NotReady => Element::from(
                 container(CupertinoSpinner::new().width(40.into()).height(40.into()))
                     .width(Length::Fill)
                     .align_x(Horizontal::Center),
-            )
+            ),
         };
 
         search_container(col)
@@ -133,6 +144,13 @@ impl container::StyleSheet for SearchContainer {
             border_color: Color::default(),
         }
     }
+}
+
+#[allow(clippy::module_name_repetitions)]
+pub enum SearchState<'a> {
+    NotReady,
+    Ready(&'a [SearchResult]),
+    Error(&'a str),
 }
 
 #[allow(clippy::module_name_repetitions)]

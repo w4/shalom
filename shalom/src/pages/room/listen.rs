@@ -1,9 +1,9 @@
 mod search;
 
-use std::{borrow::Cow, convert::identity, sync::Arc, time::Duration};
+use std::{borrow::Cow, convert::identity, iter, sync::Arc, time::Duration};
 
 use iced::{
-    futures::{future, stream, stream::FuturesUnordered, FutureExt, StreamExt},
+    futures::{future, future::Either, stream, stream::FuturesUnordered, FutureExt, StreamExt},
     subscription,
     widget::{container, image::Handle, lazy, Column, Text},
     Element, Length, Renderer, Subscription, Theme,
@@ -179,38 +179,36 @@ impl Listen {
                 self.search = if v {
                     SearchState::Open {
                         search: String::new(),
-                        results: vec![],
-                        needs_result: false,
-                        waiting_for_result: false,
+                        results_search: String::new(),
+                        results: Ok(vec![]),
                     }
                 } else {
                     SearchState::Closed
                 };
                 None
             }
-            Message::SpotifySearchResult(res) => {
-                if let SearchState::Open {
-                    results,
-                    needs_result,
-                    ..
-                } = &mut self.search
-                {
-                    if *needs_result {
-                        results.clear();
-                        *needs_result = false;
-                    }
+            Message::SpotifySearchResult((res, search)) => {
+                if self.search.search() != Some(&search) {
+                    return None;
+                }
 
-                    results.push(res);
+                if let SearchState::Open { results, .. } = &mut self.search {
+                    if let Ok(results) = results {
+                        results.push(res);
+                    } else {
+                        *results = Ok(vec![res]);
+                    }
                 }
 
                 None
             }
-            Message::SpotifySearchResultDone => {
-                if let SearchState::Open {
-                    waiting_for_result, ..
-                } = &mut self.search
-                {
-                    *waiting_for_result = false;
+            Message::SpotifySearchResultError((res, search)) => {
+                if self.search.search() != Some(&search) {
+                    return None;
+                }
+
+                if let SearchState::Open { results, .. } = &mut self.search {
+                    *results = Err(res);
                 }
 
                 None
@@ -317,13 +315,8 @@ impl Listen {
             Subscription::none()
         };
 
-        let spotify_result = if let SearchState::Open {
-            search,
-            waiting_for_result: true,
-            ..
-        } = &self.search
-        {
-            search_spotify(search.to_string(), &self.config.spotify.token)
+        let spotify_result = if let SearchState::Open { search, .. } = &self.search {
+            search_spotify(search, &self.config.spotify.token)
         } else {
             Subscription::none()
         };
@@ -344,9 +337,8 @@ impl Listen {
 pub enum SearchState {
     Open {
         search: String,
-        results: Vec<SearchResult>,
-        needs_result: bool,
-        waiting_for_result: bool,
+        results_search: String,
+        results: Result<Vec<SearchResult>, String>,
     },
     Closed,
 }
@@ -356,37 +348,39 @@ impl SearchState {
         matches!(self, Self::Open { search, .. } if !search.is_empty())
     }
 
-    pub fn results(&self) -> Option<&[SearchResult]> {
+    pub fn results(&self) -> search::SearchState<'_> {
         match self {
             Self::Open {
                 results,
-                needs_result,
+                results_search,
                 ..
-            } => (!needs_result).then_some(results.as_slice()),
-            Self::Closed => None,
+            } => match results {
+                Ok(v) if results_search.is_empty() && v.is_empty() => search::SearchState::NotReady,
+                Ok(v) => search::SearchState::Ready(v.as_slice()),
+                Err(e) => search::SearchState::Error(e),
+            },
+            Self::Closed => search::SearchState::NotReady,
         }
     }
 
     pub fn search(&self) -> Option<&str> {
         match self {
-            SearchState::Open { search, .. } => Some(search),
-            SearchState::Closed => None,
+            Self::Open { search, .. } => Some(search),
+            Self::Closed => None,
         }
     }
 
-    pub fn open(&self, search: String) -> SearchState {
+    pub fn open(&self, search: String) -> Self {
         match self {
-            Self::Open { results, .. } => Self::Open {
-                needs_result: !search.is_empty(),
-                waiting_for_result: !search.is_empty(),
+            Self::Open { results_search, .. } => Self::Open {
                 search,
-                results: results.clone(),
+                results_search: results_search.clone(),
+                results: Ok(vec![]),
             },
             Self::Closed => Self::Open {
-                needs_result: !search.is_empty(),
-                waiting_for_result: !search.is_empty(),
                 search,
-                results: vec![],
+                results_search: String::new(),
+                results: Ok(vec![]),
             },
         }
     }
@@ -423,17 +417,24 @@ pub enum Message {
     OnSpeakerPreviousTrack,
     OnSearchTerm(String),
     OnSearchVisibleChange(bool),
-    SpotifySearchResult(SearchResult),
-    SpotifySearchResultDone,
+    SpotifySearchResult((SearchResult, String)),
+    SpotifySearchResultError((String, String)),
     OnPlayTrack(String),
 }
 
-fn search_spotify(search: String, token: &str) -> Subscription<Message> {
+fn search_spotify(search_param: &str, token: &str) -> Subscription<Message> {
+    if search_param.is_empty() {
+        return Subscription::none();
+    }
+
     let token = token.to_string();
 
+    let search = search_param.to_string();
     subscription::run_with_id(
         format!("search-{search}"),
         stream::once(async move {
+            eprintln!("sending search {search}");
+
             let mut url = Url::parse("https://api.spotify.com/v1/search").unwrap();
             url.query_pairs_mut()
                 .append_pair("q", &search)
@@ -451,78 +452,90 @@ fn search_spotify(search: String, token: &str) -> Subscription<Message> {
                 .await
                 .unwrap();
 
-            eprintln!("{}", std::str::from_utf8(res.as_ref()).unwrap());
+            eprintln!("{search} - {}", std::str::from_utf8(res.as_ref()).unwrap());
 
-            Yoke::attach_to_cart(res, |s| serde_json::from_str(s).unwrap())
+            (
+                Yoke::attach_to_cart(res, |s| serde_json::from_str(s).unwrap()),
+                search,
+            )
         })
-        .flat_map(|res: Yoke<SpotifySearchResult<'static>, String>| {
-            let res = res.get();
-            let results = FuturesUnordered::new();
+        .flat_map(
+            |(res, search): (Yoke<SpotifySearchResult<'static>, String>, String)| {
+                let res = res.get();
 
-            for track in &res.tracks.items {
-                let image_url = track.album.images.last().map(|v| v.url.to_string());
-                let track_name = track.name.to_string();
-                let artist_name = track.artists.iter().map(|v| &v.name).join(", ");
-                let uri = track.uri.to_string();
+                if let Some(error) = &res.error {
+                    return Either::Left(stream::iter(iter::once(
+                        Message::SpotifySearchResultError((error.message.to_string(), search)),
+                    )));
+                }
 
-                results.push(tokio::spawn(
-                    async move {
-                        let image = load_album_art(image_url).await;
-                        SearchResult::track(image, track_name, artist_name, uri)
-                    }
-                    .boxed(),
-                ));
-            }
+                let results = FuturesUnordered::new();
 
-            for artist in &res.artists.items {
-                let image_url = artist.images.last().map(|v| v.url.to_string());
-                let artist_name = artist.name.to_string();
-                let uri = artist.uri.to_string();
+                for track in &res.tracks.items {
+                    let image_url = track.album.images.last().map(|v| v.url.to_string());
+                    let track_name = track.name.to_string();
+                    let artist_name = track.artists.iter().map(|v| &v.name).join(", ");
+                    let uri = track.uri.to_string();
 
-                results.push(tokio::spawn(
-                    async move {
-                        let image = load_album_art(image_url).await;
-                        SearchResult::artist(image, artist_name, uri)
-                    }
-                    .boxed(),
-                ));
-            }
+                    results.push(tokio::spawn(
+                        async move {
+                            let image = load_album_art(image_url).await;
+                            SearchResult::track(image, track_name, artist_name, uri)
+                        }
+                        .boxed(),
+                    ));
+                }
 
-            for albums in &res.albums.items {
-                let image_url = albums.images.last().map(|v| v.url.to_string());
-                let album_name = albums.name.to_string();
-                let uri = albums.uri.to_string();
+                for artist in &res.artists.items {
+                    let image_url = artist.images.last().map(|v| v.url.to_string());
+                    let artist_name = artist.name.to_string();
+                    let uri = artist.uri.to_string();
 
-                results.push(tokio::spawn(
-                    async move {
-                        let image = load_album_art(image_url).await;
-                        SearchResult::album(image, album_name, uri)
-                    }
-                    .boxed(),
-                ));
-            }
+                    results.push(tokio::spawn(
+                        async move {
+                            let image = load_album_art(image_url).await;
+                            SearchResult::artist(image, artist_name, uri)
+                        }
+                        .boxed(),
+                    ));
+                }
 
-            for playlist in &res.playlists.items {
-                let image_url = playlist.images.last().map(|v| v.url.to_string());
-                let playlist_name = playlist.name.to_string();
-                let uri = playlist.uri.to_string();
+                for albums in &res.albums.items {
+                    let image_url = albums.images.last().map(|v| v.url.to_string());
+                    let album_name = albums.name.to_string();
+                    let uri = albums.uri.to_string();
 
-                results.push(tokio::spawn(
-                    async move {
-                        let image = load_album_art(image_url).await;
-                        SearchResult::playlist(image, playlist_name, uri)
-                    }
-                    .boxed(),
-                ));
-            }
+                    results.push(tokio::spawn(
+                        async move {
+                            let image = load_album_art(image_url).await;
+                            SearchResult::album(image, album_name, uri)
+                        }
+                        .boxed(),
+                    ));
+                }
 
-            results
-                .map(Result::unwrap)
-                .map(Message::SpotifySearchResult)
-        })
-        .chain(stream::once(future::ready(
-            Message::SpotifySearchResultDone,
-        ))),
+                for playlist in &res.playlists.items {
+                    let image_url = playlist.images.last().map(|v| v.url.to_string());
+                    let playlist_name = playlist.name.to_string();
+                    let uri = playlist.uri.to_string();
+
+                    results.push(tokio::spawn(
+                        async move {
+                            let image = load_album_art(image_url).await;
+                            SearchResult::playlist(image, playlist_name, uri)
+                        }
+                        .boxed(),
+                    ));
+                }
+
+                Either::Right(
+                    results
+                        .filter_map(|v| future::ready(v.ok()))
+                        .zip(stream::repeat(search))
+                        .map(Message::SpotifySearchResult),
+                )
+            },
+        ),
     )
 }
 
@@ -536,19 +549,32 @@ async fn load_album_art(image_url: Option<String>) -> Handle {
 
 #[derive(Deserialize, Yokeable)]
 pub struct SpotifySearchResult<'a> {
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     tracks: SpotifySearchResultWrapper<SpotifyTrack<'a>>,
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     artists: SpotifySearchResultWrapper<SpotifyArtist<'a>>,
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     albums: SpotifySearchResultWrapper<SpotifyAlbum<'a>>,
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     playlists: SpotifySearchResultWrapper<SpotifyPlaylist<'a>>,
+    #[serde(borrow, default)]
+    error: Option<SpotifyError<'a>>,
+}
+
+#[derive(Deserialize)]
+pub struct SpotifyError<'a> {
+    message: &'a str,
 }
 
 #[derive(Deserialize)]
 pub struct SpotifySearchResultWrapper<T> {
     items: Vec<T>,
+}
+
+impl<T> Default for SpotifySearchResultWrapper<T> {
+    fn default() -> Self {
+        Self { items: Vec::new() }
+    }
 }
 
 #[allow(dead_code)]
