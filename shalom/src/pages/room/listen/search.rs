@@ -10,10 +10,7 @@ use iced::{
     Alignment, Background, Color, Element, Length, Renderer, Theme,
 };
 
-use crate::{
-    theme::colours::SYSTEM_GRAY6,
-    widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner},
-};
+use crate::widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner};
 
 pub fn search<M: Clone + 'static>(theme: Theme, results: SearchState<'_>) -> Search<'_, M> {
     Search {
@@ -119,9 +116,12 @@ pub enum Event {
     OnCancel,
 }
 
-fn result_card<M: 'static>(result: &SearchResult, style: &Theme) -> Element<'static, M, Renderer> {
+fn result_card<M: 'static>(result: &SearchResult, _style: &Theme) -> Element<'static, M, Renderer> {
     let main_text = text(&result.title);
-    let sub_text = text(&result.metadata).style(style.extended_palette().background.strong.color);
+    let sub_text = text(&result.metadata).style(Color {
+        a: 0.7,
+        ..Color::BLACK
+    });
 
     row![
         image(result.image.clone()).width(64).height(64),
@@ -154,8 +154,8 @@ impl container::StyleSheet for SearchItemContainer {
     fn appearance(&self, _style: &Self::Style) -> Appearance {
         let base = Appearance {
             text_color: Some(Color {
-                a: 0.7,
-                ..Color::WHITE
+                a: 0.9,
+                ..Color::BLACK
             }),
             background: None,
             border_radius: 20.0.into(),
@@ -167,15 +167,15 @@ impl container::StyleSheet for SearchItemContainer {
             Appearance {
                 background: Some(Background::Color(Color {
                     a: 0.9,
-                    ..SYSTEM_GRAY6
+                    ..Color::WHITE
                 })),
                 ..base
             }
         } else {
             Appearance {
                 background: Some(Background::Color(Color {
-                    a: 0.7,
-                    ..SYSTEM_GRAY6
+                    a: 0.8,
+                    ..Color::WHITE
                 })),
                 ..base
             }
