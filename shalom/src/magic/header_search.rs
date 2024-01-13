@@ -170,9 +170,9 @@ where
         );
 
         let border_radius = if matches!(local_state, State::Open) {
-            100.0 * (1.0 - self.dy_mult)
+            20.0 * (1.0 - self.dy_mult)
         } else {
-            100.0
+            20.0
         };
 
         renderer.fill_quad(
