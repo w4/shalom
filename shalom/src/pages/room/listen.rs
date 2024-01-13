@@ -35,7 +35,7 @@ pub struct Listen {
     musicbrainz_artist_id: Option<String>,
     pub background: Option<MaybePendingImage>,
     artist_logo: Option<MaybePendingImage>,
-    search: SearchState,
+    pub search: SearchState,
     config: Arc<Config>,
 }
 
@@ -56,22 +56,27 @@ impl Listen {
         }
     }
 
-    pub fn header_magic(&self, text: Text<'static>) -> Element<'static, Message> {
-        lazy(self.search.clone(), move |search| {
-            let (open, query) = if let Some(v) = search.search() {
-                (true, v)
-            } else {
-                (false, "")
-            };
+    pub fn header_magic(&self, text: Text<'static>, dy_mult: f32) -> Element<'static, Message> {
+        lazy(
+            (self.search.clone(), dy_mult.to_be_bytes()),
+            move |(search, dy_mult)| {
+                let dy_mult = f32::from_be_bytes(*dy_mult);
+                let (open, query) = if let Some(v) = search.search() {
+                    (true, v)
+                } else {
+                    (false, "")
+                };
 
-            header_search(
-                Message::OnSearchTerm,
-                Message::OnSearchVisibleChange,
-                open,
-                query,
-                text.clone(),
-            )
-        })
+                header_search(
+                    Message::OnSearchTerm,
+                    Message::OnSearchVisibleChange,
+                    open,
+                    query,
+                    text.clone(),
+                    dy_mult,
+                )
+            },
+        )
         .into()
     }
 

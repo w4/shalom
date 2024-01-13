@@ -22,7 +22,8 @@ use keyframe::{functions::EaseOutQuint, keyframes, AnimationSequence};
 
 use crate::theme::Icon;
 
-const INITIAL_SEARCH_BOX_SIZE: Size = Size::new(54., 54.);
+// text height
+const INITIAL_SEARCH_BOX_SIZE: Size = Size::new(78., 78.);
 
 pub fn header_search<'a, M>(
     on_input: fn(String) -> M,
@@ -30,6 +31,7 @@ pub fn header_search<'a, M>(
     open: bool,
     search_query: &str,
     mut header: Text<'a, Renderer>,
+    dy_mult: f32,
 ) -> HeaderSearch<'a, M>
 where
     M: Clone + 'a,
@@ -55,6 +57,7 @@ where
         on_state_change,
         search_icon: Element::from(Icon::Search.canvas(Color::BLACK)),
         close_icon: Element::from(Icon::Close.canvas(Color::BLACK)),
+        dy_mult,
     }
 }
 
@@ -73,6 +76,7 @@ pub struct HeaderSearch<'a, M> {
     input: Element<'a, M, Renderer>,
     search_icon: Element<'a, M, Renderer>,
     close_icon: Element<'a, M, Renderer>,
+    dy_mult: f32,
 }
 
 impl<'a, M> Widget<M, Renderer> for HeaderSearch<'a, M>
@@ -160,10 +164,16 @@ where
             viewport,
         );
 
+        let border_radius = if matches!(self.current_search_box_size, BoxSize::Fill) {
+            100.0 * (1.0 - self.dy_mult)
+        } else {
+            100.0
+        };
+
         renderer.fill_quad(
             Quad {
                 bounds: search_layout.bounds(),
-                border_radius: 1000.0.into(),
+                border_radius: border_radius.into(),
                 border_width: 0.0,
                 border_color: Color::default(),
             },

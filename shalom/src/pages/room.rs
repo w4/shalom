@@ -7,7 +7,11 @@ use iced::{
     advanced::graphics::core::Element,
     font::{Stretch, Weight},
     theme,
-    widget::{container, row, text, Column},
+    widget::{
+        container, row, scrollable,
+        scrollable::{Direction, Properties, Viewport},
+        text, Column,
+    },
     Color, Font, Length, Renderer, Subscription, Theme,
 };
 
@@ -21,6 +25,9 @@ use crate::{
     },
 };
 
+const PADDING: u16 = 40;
+const SPACE_TOP: u16 = 51;
+
 #[derive(Debug)]
 pub struct Room {
     id: &'static str,
@@ -28,6 +35,7 @@ pub struct Room {
     lights: lights::Lights,
     listen: listen::Listen,
     current_page: Page,
+    dy: f32,
 }
 
 impl Room {
@@ -40,6 +48,7 @@ impl Room {
             lights: lights::Lights::new(oracle, &room),
             room,
             current_page: Page::Listen,
+            dy: 0.0,
         }
     }
 
@@ -56,6 +65,10 @@ impl Room {
                 None
             }
             Message::Exit => Some(Event::Exit),
+            Message::OnContentScroll(viewport) => {
+                self.dy = viewport.absolute_offset().y;
+                None
+            }
         }
     }
 
@@ -69,25 +82,60 @@ impl Room {
             })
             .style(theme::Text::Color(Color::WHITE));
 
-        let header = if let Page::Listen = self.current_page {
-            self.listen
-                .header_magic(header.clone())
-                .map(Message::Listen)
-        } else {
-            Element::from(header)
+        let (mut current, needs_scrollable) = match self.current_page {
+            Page::Climate => (Element::from(row![]), false),
+            Page::Listen => (
+                self.listen.view(style).map(Message::Listen),
+                self.listen.search.is_open(),
+            ),
+            Page::Lights => (
+                container(self.lights.view().map(Message::Lights))
+                    .padding([0, PADDING, 0, PADDING])
+                    .into(),
+                false,
+            ),
         };
 
-        let header = container(header).padding([40, 40, 0, 40]);
+        let (header, padding_mult) = if let Page::Listen = self.current_page {
+            let padding_mult = if needs_scrollable {
+                (self.dy / f32::from(SPACE_TOP)).min(1.0)
+            } else {
+                0.0
+            };
 
-        let mut col = Column::new().spacing(20).push(header);
+            (
+                self.listen
+                    .header_magic(header.clone(), padding_mult)
+                    .map(Message::Listen),
+                padding_mult,
+            )
+        } else {
+            (Element::from(header), 0.0)
+        };
 
-        col = col.push(match self.current_page {
-            Page::Climate => Element::from(row![]),
-            Page::Listen => self.listen.view(style).map(Message::Listen),
-            Page::Lights => container(self.lights.view().map(Message::Lights))
-                .padding([0, 40, 0, 40])
-                .into(),
-        });
+        let padding = f32::from(PADDING) * (1.0 - padding_mult);
+        let header = container(header).padding([padding, padding, 0.0, padding]);
+
+        let mut col = Column::new()
+            .spacing(20.0 * (1.0 - padding_mult))
+            .push(header);
+
+        // TODO: on close, we need to animate the scrollback by padding the container up to dy
+        if needs_scrollable {
+            current = scrollable(container(current).width(Length::Fill).padding([
+                f32::from(PADDING + 30) * padding_mult,
+                0.0,
+                0.0,
+                0.0,
+            ]))
+            .direction(Direction::Vertical(
+                Properties::default().scroller_width(0).width(0),
+            ))
+            .on_scroll(Message::OnContentScroll)
+            .into();
+        }
+
+        col = col.push(current);
 
         let background = match self.current_page {
             Page::Listen => self
@@ -105,7 +153,7 @@ impl Room {
                 .on_exit(Message::Exit),
             image_background(
                 background.unwrap_or_else(|| crate::theme::Image::Sunset.into()),
-                col.width(Length::Fill).into()
+                col.width(Length::Fill).into(),
             )
             .width(Length::FillPortion(15))
             .height(Length::Fill),
@@ -134,5 +182,6 @@ pub enum Message {
     Lights(lights::Message),
     Listen(listen::Message),
     ChangePage(Page),
+    OnContentScroll(Viewport),
     Exit,
 }

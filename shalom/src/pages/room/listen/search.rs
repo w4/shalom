@@ -4,13 +4,16 @@ use iced::{
     alignment::Horizontal,
     theme,
     widget::{
-        column, component, container, container::Appearance, horizontal_rule, image, image::Handle,
-        row, scrollable, text, Column, Component,
+        column, component, container, container::Appearance, image, image::Handle, row, text,
+        Column, Component,
     },
     Alignment, Background, Color, Element, Length, Renderer, Theme,
 };
 
-use crate::widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner};
+use crate::{
+    theme::colours::SYSTEM_GRAY6,
+    widgets::{mouse_area::mouse_area, spinner::CupertinoSpinner},
+};
 
 pub fn search<M: Clone + 'static>(theme: Theme, results: SearchState<'_>) -> Search<'_, M> {
     Search {
@@ -34,52 +37,72 @@ impl<M> Search<'_, M> {
 }
 
 impl<M: Clone + 'static> Component<M, Renderer> for Search<'_, M> {
-    type State = ();
+    type State = State;
     type Event = Event;
 
-    fn update(&mut self, _state: &mut Self::State, event: Self::Event) -> Option<M> {
+    fn update(&mut self, state: &mut Self::State, event: Self::Event) -> Option<M> {
         match event {
-            Event::OnTrackPress(id) => self.on_track_press.map(|f| (f)(id)),
+            Event::OnTrackPress(id) => {
+                state.pressing = None;
+                self.on_track_press.map(|f| (f)(id))
+            }
+            Event::OnDown(i) => {
+                state.pressing = Some(i);
+                None
+            }
+            Event::OnCancel => {
+                state.pressing = None;
+                None
+            }
         }
     }
 
-    fn view(&self, _state: &Self::State) -> Element<'_, Self::Event, Renderer> {
-        let col = match self.results {
+    fn view(&self, state: &Self::State) -> Element<'_, Self::Event, Renderer> {
+        match self.results {
             SearchState::Ready(results) if !results.is_empty() => {
                 let mut col = Column::new();
 
                 for (i, result) in results.iter().enumerate() {
-                    if i != 0 {
-                        col = col.push(hr());
-                    }
+                    let pressing = state.pressing == Some(i);
 
-                    let track = mouse_area(search_item_container(result_card(result, &self.theme)))
-                        .on_press(Event::OnTrackPress(result.uri.to_string()));
+                    let track = mouse_area(search_item_container(
+                        result_card(result, &self.theme),
+                        pressing,
+                    ))
+                    .on_press(Event::OnDown(i))
+                    .on_release(Event::OnTrackPress(result.uri.to_string()))
+                    .on_cancel(Event::OnCancel);
 
                     col = col.push(track);
                 }
 
-                Element::from(scrollable(col.spacing(10)))
+                Element::from(col.spacing(10))
             }
-            SearchState::Ready(_) => Element::from(
+            SearchState::Ready(_) => Element::from(search_item_container(
                 container(text("No results found"))
                     .width(Length::Fill)
                     .align_x(Horizontal::Center),
-            ),
-            SearchState::Error(error) => Element::from(
+                false,
+            )),
+            SearchState::Error(error) => Element::from(search_item_container(
                 container(text(error))
                     .width(Length::Fill)
                     .align_x(Horizontal::Center),
-            ),
-            SearchState::NotReady => Element::from(
+                false,
+            )),
+            SearchState::NotReady => Element::from(search_item_container(
                 container(CupertinoSpinner::new().width(40.into()).height(40.into()))
                     .width(Length::Fill)
                     .align_x(Horizontal::Center),
-            ),
-        };
-
-        search_container(col)
+                false,
+            )),
+        }
     }
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct State {
+    pressing: Option<usize>,
 }
 
 impl<'a, M: 'static + Clone> From<Search<'a, M>> for Element<'a, M, Renderer> {
@@ -88,13 +111,16 @@ impl<'a, M: 'static + Clone> From<Search<'a, M>> for Element<'a, M, Renderer> {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug)]
 pub enum Event {
     OnTrackPress(String),
+    OnDown(usize),
+    OnCancel,
 }
 
 fn result_card<M: 'static>(result: &SearchResult, style: &Theme) -> Element<'static, M, Renderer> {
-    let main_text = text(&result.title).style(style.extended_palette().background.base.text);
+    let main_text = text(&result.title);
     let sub_text = text(&result.metadata).style(style.extended_palette().background.strong.color);
 
     row![
@@ -106,42 +132,53 @@ fn result_card<M: 'static>(result: &SearchResult, style: &Theme) -> Element<'sta
     .into()
 }
 
-fn hr<M: 'static>() -> Element<'static, M, Renderer> {
-    container(horizontal_rule(1))
-        .width(Length::Fill)
-        .padding([10, 0, 10, 0])
-        .into()
-}
-
 fn search_item_container<'a, M: 'a>(
     elem: impl Into<Element<'a, M, Renderer>>,
-) -> Element<'a, M, Renderer> {
-    container(elem).padding([0, 20, 0, 20]).into()
-}
-
-fn search_container<'a, M: 'a>(
-    elem: impl Into<Element<'a, M, Renderer>>,
+    pressing: bool,
 ) -> Element<'a, M, Renderer> {
     container(elem)
-        .padding([20, 0, 20, 0])
+        .padding([20, 20, 20, 20])
+        .style(theme::Container::Custom(Box::new(SearchItemContainer(
+            pressing,
+        ))))
         .width(Length::Fill)
-        .style(theme::Container::Custom(Box::new(SearchContainer)))
         .into()
 }
 
 #[allow(clippy::module_name_repetitions)]
-pub struct SearchContainer;
+pub struct SearchItemContainer(bool);
 
-impl container::StyleSheet for SearchContainer {
+impl container::StyleSheet for SearchItemContainer {
     type Style = Theme;
 
     fn appearance(&self, _style: &Self::Style) -> Appearance {
-        Appearance {
-            text_color: Some(Color::BLACK),
-            background: Some(Background::Color(Color::WHITE)),
+        let base = Appearance {
+            text_color: Some(Color {
+                a: 0.7,
+                ..Color::WHITE
+            }),
+            background: None,
             border_radius: 20.0.into(),
             border_width: 0.0,
             border_color: Color::default(),
+        };
+
+        if self.0 {
+            Appearance {
+                background: Some(Background::Color(Color {
+                    a: 0.9,
+                    ..SYSTEM_GRAY6
+                })),
+                ..base
+            }
+        } else {
+            Appearance {
+                background: Some(Background::Color(Color {
+                    a: 0.7,
+                    ..SYSTEM_GRAY6
+                })),
+                ..base
+            }
         }
     }
 }
