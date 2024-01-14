@@ -55,7 +55,9 @@ impl<'a, M: Clone> Widget<M, Renderer> for ContextMenu<'a, M> {
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
-        self.base.as_widget().layout(tree, renderer, limits)
+        self.base
+            .as_widget()
+            .layout(&mut tree.children[0], renderer, limits)
     }
 
     fn draw(
